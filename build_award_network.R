@@ -34,51 +34,75 @@ collapse_list <- function(x){
 }
 
 mergeNode <- function(x, type, graph) {
+
+  #' Merge nodes using `MERGE` rather than CREATE.
+  #' 
+  #' @param x A list of node elements
+  #' @param type The node type.
+  #' @param graph The neo4j graph.
+  #' 
+  #' @author Simon Goring
+  
   query = "MERGE (n"
+  
   if (length(type) > 0) {
     for (i in 1:length(type)) {
       query = paste0(query, ":", type[i])
     }
   }
   
-  props <- x
-  
-  query <- ifelse(length(props) > 0, paste0(query, " {", collapse_list(x), "}) "), 
+  query <- ifelse(length(x) > 0, paste0(query, " {", collapse_list(x), "}) "), 
                  query)
   
   query <- paste0(query, "ON CREATE SET n =  {", collapse_list(x), "} RETURN n")
-  node  <- cypherToList(graph, query, props = x)[[1]]$n
+  node  <- cypherToList(graph, query)[[1]]$n
   
   return(node)
 }
 
 mergeRel <- function(x, y, type, graph) {
-  # x needs to be a two element vector, as does y.  
-  # Type is the relationship type, and should be a list with two elements
-  # the relationship type, and attributes for the relationship.
+  
+  #' Generate and merge new relationships between nodes.
+  #' @param x A list with two elements, \code{type} and \code{object}, a \code{node} object.
+  #' @param as A list with two elements, \code{type} and \code{object}, a \code{node} object.  
+  #' @param type A list with two elements, the new relationship \code{type} and \code{data}, any information to be passed in.
 
-  # x and y should be lists of IDs:
-  
-  attrs <- type$data
-  
-  if(length(attrs) == 0) {
-    
-    query <-  paste0('MATCH (n:', x$type, ' {', collapse_list(x$object), 
-                     '}), (n2:', y$type, '  {', collapse_list(y$object), 
-                     '}) MERGE (n)-[r:', type$type, ']-(n2) RETURN (n)-[r]-(n2)')
-    
-    new_rel <- cypherToList(graph, query)
-    
-  } else {
-    
-    query <-  paste0('MATCH (n:', x$type, ' {', collapse_list(x$object), 
-                     '}), (n2:', y$type, '  {', collapse_list(y$object), 
-                     '}) MERGE (n)-[r:', type$type, ' {', 
-                     collapse_list(attrs), '}]-(n2)  RETURN (n)-[r]-(n2)')
-    
-    new_rel <- cypherToList(graph, query)
-    
+  # Match nodes:
+  render_obj <- function(x, type, prepend) {
+    if ('list' %in% class(x)) {
+      out <- lapply(1:length(x), function(index) {
+        paste0('(', prepend, index, ':',type,' {', collapse_list(x[[index]]), '})') })
+      elements <- paste0(prepend, 1:length(x))
+    } else {
+      out <- paste0('(', prepend, '1:', type, ' {', collapse_list(x), '})')
+      elements <- paste0(prepend, '1')
+    }
+    return(list(string = out, elements = elements))
   }
+
+  x_objs <- render_obj(x$object, x$type, 'x')
+  y_objs <- render_obj(y$object, y$type, 'y')
+  
+  matches <- paste0(paste(x_objs$string, collapse = ', '), ', ',
+                    paste(y_objs$string, collapse = ', '))
+  
+  relations <- expand.grid(to = paste0('(', x_objs$elements, ')'), 
+                           from = paste0('(', y_objs$elements, ')'))
+  
+  if (length(type$data) == 0) {
+    relation_string <- paste0(relations$to, '-[r:', type$type, ']-', relations$from)
+  } else {
+    rs <- paste0('r', 1:nrow(relations))
+    
+    relation_string <- paste(paste0(relations$to, '-[', rs, ':', type$type, 
+                              ' {', collapse_list(type$data), '}]-', relations$from), 
+                             collapse = ' MERGE ')
+  }
+    
+  query <-  paste0('MATCH ', matches, 
+                   ' MERGE ', relation_string)
+    
+  new_rel <- cypherToList(graph, query)
   
   return(new_rel)
   
@@ -131,7 +155,7 @@ parse_award <- function(input) {
   in_prog <- input$Award[names(input$Award) %in% c('ProgramReference', 'ProgramElement')]
   
   if (length(in_prog) == 1 ) {
-    prog_node <- prog_parse(in_orgs)
+    prog_node <- prog_parse(in_prog)
   } else if (length(in_prog) > 1) {
     prog_node <- lapply(in_prog, prog_parse)
   } else {
@@ -139,42 +163,11 @@ parse_award <- function(input) {
   }
   
   # Now, combine the Program and Organization elements
-  if (!'list' %in% c(class(prog_node), class(org_node))) {
-  
-    mergeRel(x     = list(type = 'program', object = prog_node),
-             y     = list(type = 'organization', object = org_node),
-             type  = list(type = 'program_of', data = list(award = award_no)),
-             graph = ec_graph)
-    
-  } else {
-    if ('list' %in% class(prog_node)) {
-      for (i in 1:length(prog_node)) {
-        if ('list' %in% class(org_node)) {
-          for (j in 1:length(org_node)) {
-            mergeRel(x     = list(type = 'program', object = prog_node[[i]]),
-                     y     = list(type = 'organization', object = org_node[[j]]),
-                     type  = list(type = 'program_of', data = list(award = award_no)),
-                     graph = ec_graph)
-            
-          }
-        } else {
-          mergeRel(x     = list(type = 'program', object = prog_node[[i]]),
+  na <-   mergeRel(x     = list(type = 'program', object = prog_node),
                    y     = list(type = 'organization', object = org_node),
                    type  = list(type = 'program_of', data = list(award = award_no)),
                    graph = ec_graph)
-        }
-      }
-    } else {
-      for (j in 1:length(org_node)) {
-        mergeRel(x     = list(type = 'program', object = prog_node),
-                 y     = list(type = 'organization', object = org_node[[j]]),
-                 type  = list(type = 'program_of', data = NULL),
-                 graph = ec_graph)
-        
-      }
-    }
-  }
-           
+
   # Award :
   if (!length(input$Award$AwardID) == 0) {
     
@@ -189,14 +182,17 @@ parse_award <- function(input) {
                   effectiveDate  = unlist(input$Award$AwardEffectiveDate),
                   expirationDate = unlist(input$Award$AwardExpirationDate),
                   instrument     = unlist(input$Award$AwardInstrument),
-                  abstract       = unlist(input$Award$AbstractNarration))
+                  abstract       = gsub("'", '"', unlist(input$Award$AbstractNarration)))
                   
     awd_node <- mergeNode(award, graph = ec_graph, type = "award")
+    
+    mergeRel(x     = list(type = 'program', object = prog_node),
+             y     = list(type = 'award', object = awd_node),
+             type  = list(type = 'funded_by', data = list(award = award_no)),
+             graph = ec_graph)
+    
   }
   
-  mergeRels(x = )
-  
-  #  I need to do this pairwise and use the award number as an attribute in the links.
   #  Person
   
   in_pers <- input$Award[names(input$Award) %in% 'Investigator']
@@ -212,15 +208,26 @@ parse_award <- function(input) {
     
   }
   
-  pers_node <- ifelse(length(in_pers)  > 1, 
-                      lapply(in_pers, pers_parse),
-                      ifelse(length(in_pers) == 1, pers_parse(in_pers$Investigator), NA))
+  if (length(in_pers) == 1 ) {
+    pers_node <- pers_parse(in_pers)
+  } else if (length(in_pers) > 1) {
+    pers_node <- lapply(in_pers, pers_parse)
+  } else {
+    pers_node <- NA
+  }
+  
+  mergeRel(x     = list(type = 'person', object = pers_node),
+           y     = list(type = 'award', object = awd_node),
+           type  = list(type = 'awarded_to', data = list(award = award_no)),
+           graph = ec_graph)
   
   # Institution
   
   in_inst <- input$Award[names(input$Award) %in% 'Institution']
   
   inst_parse <- function(x) {
+    
+    x <- x$Institution
     
     inst <- list(id        = paste0(unlist(x$Name),unlist(x$ZipCode)),
                  name      = unlist(x$Name),
@@ -235,25 +242,18 @@ parse_award <- function(input) {
     
   }
   
-  inst_node <- ifelse(length(in_inst)  > 1, 
-                      lapply(in_inst, inst_parse),
-                      ifelse(length(in_inst) == 1, inst_parse(in_inst$Institution), NA))
+  if (length(in_inst) == 1) {
+    inst_node <- inst_parse(in_inst)
+  } else if (length(in_inst) > 1) {
+    inst_node <- lapply(in_inst, inst_parse)
+  } else {
+    inst_node <- NA
+  }
   
-  # Once those elements are all created, we need to bring it all together:
-  
-  # Relationships:
-  #  People "WORKS AT" Institutions.  We want to modify the early & late dates for their employment at those insitutions based
-  #  on award dates (going by the date awarded, rather than end dates).
-  
-  #  Awards are GRANTED THROUGH organizations.
-  
-  mergeRel(x = list(type = 'award', 
-                    id = input$Award$AwardID),
-           y = list(type = 'institution', 
-                    id = paste0(unlist(input$Award$Institution$Name),unlist(input$Award$Institution$ZipCode))),
-           type = list(type = 'GRANTED_TO', data = data.frame()),
+  mergeRel(x = list(type     = 'person', object = pers_node),
+           y     = list(type = 'institution', object = inst_node),
+           type  = list(type = 'employed_by', data = list(award = award_no)),
            graph = ec_graph)
-           
   
 }
 
