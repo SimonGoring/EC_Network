@@ -130,6 +130,11 @@ parse_award <- function(input) {
   
   # It looks like Organization only ever has one unit:
   
+  # We're going to bail on Fellowships, which are assigned to only a single person:
+  if('Fellowship' %in% unlist(input$Award$AwardInstrument)) {
+    return(data.frame(award = award_no, success = 0, message = 'Fellowship'))
+  }
+  
   org_parse <- function(x) {
     
     if('Organization' %in% names(x)) {
@@ -251,10 +256,16 @@ parse_award <- function(input) {
     pers_node <- NA
   }
   
-  mergeRel(x     = list(type = 'person', object = pers_node),
-           y     = list(type = 'award', object = awd_node),
-           type  = list(type = 'awarded_to', data = list(award = award_no)),
-           graph = ec_graph)
+  if(!(is.null(in_pers))) {
+    if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
+    # This means that awards with no listed personnel get assigned to the
+    # institutution, but not to a person.  So they're still in the graph.
+      mergeRel(x     = list(type = 'person', object = pers_node),
+               y     = list(type = 'award', object = awd_node),
+               type  = list(type = 'awarded_to', data = list(award = award_no)),
+               graph = ec_graph)
+    }
+  }  
   
   # Institution
   
@@ -285,10 +296,21 @@ parse_award <- function(input) {
     inst_node <- NA
   }
   
-  mergeRel(x = list(type     = 'person', object = pers_node),
+  if(!(is.null(in_pers))) {
+    if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
+      mergeRel(x = list(type     = 'person', object = pers_node),
+             y     = list(type = 'institution', object = inst_node),
+             type  = list(type = 'employed_by', data = list(award = award_no)),
+             graph = ec_graph)
+    }
+  }
+  
+  mergeRel(x = list(type     = 'award', object = awd_node),
            y     = list(type = 'institution', object = inst_node),
-           type  = list(type = 'employed_by', data = list(award = award_no)),
+           type  = list(type = 'administered_by', data = list(award = award_no)),
            graph = ec_graph)
+  
+  return(data.frame(award = award_no, success = 0, message = "You're the best!"))
   
 }
 
@@ -296,4 +318,9 @@ build_nodes <- nsf_files %>% sample(500) %>% map(function(x) {test <- try(parse_
 
 # The failed nodes:
 failed <- unlist(build_nodes)
-test <- read_award(failed[2]) %>% parse_award
+for(i in 1:length(failed)) {
+  test <- read_award(failed[i]) %>% parse_award
+}
+
+input <- read_award(failed[3])
+input
