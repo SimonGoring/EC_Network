@@ -15,9 +15,9 @@ read_award <- function(file) {
 }
 
 award_elements <- nsf_files %>% 
-  sample(5000) %>% 
+  sample(500) %>% 
   map(read_award) %>% 
-  map(function(x)names(x$Award)) %>% 
+  map(function(x)length(x$Award$Investigator$FirstName)) %>% 
   unlist %>% 
   table
 
@@ -205,6 +205,12 @@ parse_award <- function(input) {
   in_pers <- input$Award[names(input$Award) %in% 'Investigator']
   
   pers_parse <- function(x) {
+    
+    if ('Investigator' %in% names(x)) {
+      x <- x$Investigator
+    }
+    
+    assertthat::assert_that(length(x$FirstName) > 0)
     
     pers <- list(id           = paste0(unlist(x$FirstName),unlist(x$LastName)),
                  firstname    = unlist(x$FirstName),
