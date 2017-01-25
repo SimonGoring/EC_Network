@@ -55,6 +55,8 @@ mergeNode <- function(x, type, graph) {
     }
   }
   
+  if (all(sapply(x, length) == 0)) { return(NULL) }
+  
   query <- ifelse(length(x) > 0, paste0(query, " {", collapse_list(x), "}) "), 
                  query)
   
@@ -73,7 +75,11 @@ mergeRel <- function(x, y, type, graph) {
 
   # Match nodes:
   render_obj <- function(x, type, prepend) {
+    
     if ('list' %in% class(x)) {
+      
+      x <- x[!sapply(x, is.null)]
+      
       out <- lapply(1:length(x), function(index) {
         paste0('(', prepend, index, ':',type,' {', collapse_list(x[[index]]), '})') })
       elements <- paste0(prepend, 1:length(x))
@@ -86,6 +92,8 @@ mergeRel <- function(x, y, type, graph) {
 
   x_objs <- render_obj(x$object, x$type, 'x')
   y_objs <- render_obj(y$object, y$type, 'y')
+  
+  
   
   matches <- paste0(paste(x_objs$string, collapse = ', '), ', ',
                     paste(y_objs$string, collapse = ', '))
