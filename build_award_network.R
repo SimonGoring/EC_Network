@@ -111,7 +111,7 @@ mergeRel <- function(x, y, type, graph) {
 parse_award <- function(input) {
   
   # The award number is going to be the key identifier for all relationships
-  #  and for the award itself:
+  # and for the award itself:
   award_no <- unlist(input$Award$AwardID)
   
   # It looks like Organization only ever has one unit:
@@ -137,8 +137,7 @@ parse_award <- function(input) {
   } else {
     org_node <- NA
   }
-   
-  
+
   # Program ###
   
   prog_parse <- function(x) {
@@ -163,11 +162,13 @@ parse_award <- function(input) {
   }
   
   # Now, combine the Program and Organization elements
-  na <-   mergeRel(x     = list(type = 'program', object = prog_node),
-                   y     = list(type = 'organization', object = org_node),
-                   type  = list(type = 'program_of', data = list(award = award_no)),
-                   graph = ec_graph)
-
+  if (!all(NA %in% prog_node)) {
+    na <-   mergeRel(x     = list(type = 'program', object = prog_node),
+                     y     = list(type = 'organization', object = org_node),
+                     type  = list(type = 'program_of', data = list(award = award_no)),
+                     graph = ec_graph)
+  } 
+  
   # Award :
   if (!length(input$Award$AwardID) == 0) {
     
@@ -186,11 +187,17 @@ parse_award <- function(input) {
                   
     awd_node <- mergeNode(award, graph = ec_graph, type = "award")
     
-    mergeRel(x     = list(type = 'program', object = prog_node),
-             y     = list(type = 'award', object = awd_node),
-             type  = list(type = 'funded_by', data = list(award = award_no)),
-             graph = ec_graph)
-    
+    if (!all(NA %in% prog_node)) {
+      mergeRel(x     = list(type = 'program', object = prog_node),
+               y     = list(type = 'award', object = awd_node),
+               type  = list(type = 'funded_by', data = list(award = award_no)),
+               graph = ec_graph)
+    } else if (!all(NA %in% org_node)) {
+      na <-   mergeRel(x     = list(type = 'organization', object = org_node),
+                       y     = list(type = 'award', object = awd_node),
+                       type  = list(type = 'funded_by', data = list(award = award_no)),
+                       graph = ec_graph)
+    }  
   }
   
   #  Person
@@ -258,3 +265,7 @@ parse_award <- function(input) {
 }
 
 build_nodes <- nsf_files %>% sample(500) %>% map(function(x) {test <- try(parse_award(read_award(x))); ifelse('try-error' %in% class(test), x, test)})
+
+# The failed nodes:
+failed <- unlist(build_nodes)
+input <- read_award(failed[1])
