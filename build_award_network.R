@@ -32,6 +32,8 @@ ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", pass
 collapse_list <- function(x){
   
   # Escape characters:
+  # Remove double escapes within the document.
+  x <- lapply(x, function(x) gsub('\\', '', x, fixed = TRUE))
   x <- lapply(x, function(x) gsub('(\'|\")', '\\\\\\1', x))
             
   paste0(names(x), ":'", unlist(x), "'", collapse = ', ')
@@ -228,7 +230,9 @@ parse_award <- function(input) {
       x <- x$Investigator
     }
     
-    assertthat::assert_that(length(x$FirstName) > 0)
+    if (length(x$FirstName) == 0 & length(x$LastName) == 0 | "DATA NOT AVAILABLE" %in% x$LastName) {
+      return(NULL)
+    }
     
     pers <- list(id           = paste0(unlist(x$FirstName),unlist(x$LastName)),
                  firstname    = unlist(x$FirstName),
@@ -292,4 +296,4 @@ build_nodes <- nsf_files %>% sample(500) %>% map(function(x) {test <- try(parse_
 
 # The failed nodes:
 failed <- unlist(build_nodes)
-input <- read_award(failed[1])
+test <- read_award(failed[2]) %>% parse_award
