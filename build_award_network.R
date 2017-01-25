@@ -30,6 +30,10 @@ library(RNeo4j)
 ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
 
 collapse_list <- function(x){
+  
+  # Escape characters:
+  x <- lapply(x, function(x) gsub('(\'|\")', '\\\\\\1', x))
+            
   paste0(names(x), ":'", unlist(x), "'", collapse = ', ')
 }
 
@@ -118,7 +122,9 @@ parse_award <- function(input) {
   
   org_parse <- function(x) {
     
-    x <- x$Organization
+    if('Organization' %in% names(x)) {
+      x <- x$Organization
+    }
     
     org <- list(code        = unlist(x$Code),
                 directorate = unlist(x$Directorate),
@@ -142,6 +148,10 @@ parse_award <- function(input) {
   
   prog_parse <- function(x) {
     
+    if('ProgramElement' %in% names(x) | 'ProgramReference' %in% names(x)) {
+      x <- x[[1]]
+    }
+    
     if (!(length(x$Code) == 0 & length(x$Text) == 0)) {
       
       prog <- list(code     = ifelse(length(x$Code) > 0, unlist(x$Code), unlist(x$Text)),
@@ -153,7 +163,7 @@ parse_award <- function(input) {
   
   in_prog <- input$Award[names(input$Award) %in% c('ProgramReference', 'ProgramElement')]
   
-  if (length(in_prog) == 1 ) {
+  if (length(in_prog) == 1) {
     prog_node <- prog_parse(in_prog)
   } else if (length(in_prog) > 1) {
     prog_node <- lapply(in_prog, prog_parse)
@@ -183,7 +193,7 @@ parse_award <- function(input) {
                   effectiveDate  = unlist(input$Award$AwardEffectiveDate),
                   expirationDate = unlist(input$Award$AwardExpirationDate),
                   instrument     = unlist(input$Award$AwardInstrument),
-                  abstract       = gsub("'", '"', unlist(input$Award$AbstractNarration)))
+                  abstract       = unlist(input$Award$AbstractNarration))
                   
     awd_node <- mergeNode(award, graph = ec_graph, type = "award")
     
