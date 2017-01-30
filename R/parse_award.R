@@ -189,6 +189,9 @@ parse_award <- function(input) {
            type  = list(type = 'administered_by', data = list(award = award_no)),
            graph = ec_graph)
   
-  return(data.frame(award = award_no, success = 0, message = "You're the best!"))
+  return(data.frame(award = award_no, 
+                    success = 1, 
+                    message = "You're the best!",
+                    time = Sys.time()))
   
 }

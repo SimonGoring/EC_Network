@@ -18,9 +18,11 @@ mergeNode <- function(x, type, graph) {
   
   if (all(sapply(x, length) == 0)) { return(NULL) }
   
-  query <- ifelse(length(x) > 0, paste0(query, " {", collapse_list(x), "}) "), 
+  query <- ifelse(length(x) > 0 & !(":''" %in% collapse_list(x)), 
+                  paste0(query, " {", collapse_list(x), "}) "), 
                   query)
-  
+    
+
   query <- paste0(query, "ON CREATE SET n =  {", collapse_list(x), "} RETURN n")
   node  <- cypherToList(graph, query)[[1]]$n
   
