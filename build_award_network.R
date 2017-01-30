@@ -1,25 +1,63 @@
 library(dplyr)
 library(purrr)
+library(multidplyr)
 
 file <- 'data/input/awards/9496153.xml'
 
-nsf_files      <- list.files('data/input/awards', full.names = TRUE)
+nsf_files      <- data.frame(files = list.files('data/input/awards',
+                                                full.names = TRUE, pattern = '.xml'),
+                             stringsAsFactors = FALSE)
 
-
+nsf_files$group <- (1:length(nsf_files) %% 4 + 1)
+                   
 read_award <- function(file) {
   input <- xml2::read_xml(file)
   input <- xml2::as_list(input)
   
   input
-  
 }
 
-award_elements <- nsf_files %>% 
-  sample(500) %>% 
-  map(read_award) %>% 
-  map(function(x)length(x$Award$Investigator$FirstName)) %>% 
-  unlist %>% 
-  table
+timer <- data.frame(series = rep(NA, 20), parallel = rep(NA, 20))
+
+for(i in seq(500, 10000, by = 500)) {
+
+  start <- proc.time() 
+  
+  award_elements <- nsf_files %>% 
+    sample_n(i) %>% 
+    by_row(function(x)read_award(x$files))
+  
+  time_elapsed_series <- proc.time() - start
+  
+  # Implementation of parallel processing.
+  
+  cluster <- multidplyr::create_cluster(3)
+  
+  by_group <- nsf_files %>%
+    sample_n(i) %>% 
+    partition(group, cluster = cluster)
+  
+  cluster %>% cluster_library(packages = "dplyr") %>% 
+    cluster_library(packages = "purrr") %>%
+    cluster_library(packages = "xml2") %>%
+    # Assign values (use this to load functions or data to each core)
+    cluster_assign_value("read_award", read_award)
+  
+  start <- proc.time() # Start clock
+  
+  files_in_parallel <- by_group %>% # Use by_group party_df
+    mutate(
+      lists = map(.x = files, 
+                         ~ read_award(.x)
+      )
+    ) %>%
+    collect() # Special collect() function to recombine partitions
+    
+  time_elapsed_parallel <- proc.time() - start # End clock
+
+  timer[i/500,] <- c(time_elapsed_series[3], time_elapsed_parallel[3])
+    
+}
 
 award_parse <- nsf_files %>% 
   sample(500) %>% 
@@ -29,98 +67,9 @@ library(RNeo4j)
 
 ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
 
-collapse_list <- function(x){
-  
-  # Escape characters:
-  # Remove double escapes within the document.
-  x <- lapply(x, function(x) gsub('\\', '', x, fixed = TRUE))
-  x <- lapply(x, function(x) gsub('(\'|\")', '\\\\\\1', x))
-            
-  paste0(names(x), ":'", unlist(x), "'", collapse = ', ')
-}
-
-mergeNode <- function(x, type, graph) {
-
-  #' Merge nodes using `MERGE` rather than CREATE.
-  #' 
-  #' @param x A list of node elements
-  #' @param type The node type.
-  #' @param graph The neo4j graph.
-  #' 
-  #' @author Simon Goring
-  
-  query = "MERGE (n"
-  
-  if (length(type) > 0) {
-    for (i in 1:length(type)) {
-      query = paste0(query, ":", type[i])
-    }
-  }
-  
-  if (all(sapply(x, length) == 0)) { return(NULL) }
-  
-  query <- ifelse(length(x) > 0, paste0(query, " {", collapse_list(x), "}) "), 
-                 query)
-  
-  query <- paste0(query, "ON CREATE SET n =  {", collapse_list(x), "} RETURN n")
-  node  <- cypherToList(graph, query)[[1]]$n
-  
-  return(node)
-}
-
-mergeRel <- function(x, y, type, graph) {
-  
-  #' Generate and merge new relationships between nodes.
-  #' @param x A list with two elements, \code{type} and \code{object}, a \code{node} object.
-  #' @param as A list with two elements, \code{type} and \code{object}, a \code{node} object.  
-  #' @param type A list with two elements, the new relationship \code{type} and \code{data}, any information to be passed in.
-
-  # Match nodes:
-  render_obj <- function(x, type, prepend) {
-    
-    if ('list' %in% class(x)) {
-      
-      x <- x[!sapply(x, is.null)]
-      
-      out <- lapply(1:length(x), function(index) {
-        paste0('(', prepend, index, ':',type,' {', collapse_list(x[[index]]), '})') })
-      elements <- paste0(prepend, 1:length(x))
-    } else {
-      out <- paste0('(', prepend, '1:', type, ' {', collapse_list(x), '})')
-      elements <- paste0(prepend, '1')
-    }
-    return(list(string = out, elements = elements))
-  }
-
-  x_objs <- render_obj(x$object, x$type, 'x')
-  y_objs <- render_obj(y$object, y$type, 'y')
-  
-  
-  
-  matches <- paste0(paste(x_objs$string, collapse = ', '), ', ',
-                    paste(y_objs$string, collapse = ', '))
-  
-  relations <- expand.grid(to = paste0('(', x_objs$elements, ')'), 
-                           from = paste0('(', y_objs$elements, ')'))
-  
-  if (length(type$data) == 0) {
-    relation_string <- paste0(relations$to, '-[r:', type$type, ']-', relations$from)
-  } else {
-    rs <- paste0('r', 1:nrow(relations))
-    
-    relation_string <- paste(paste0(relations$to, '-[', rs, ':', type$type, 
-                              ' {', collapse_list(type$data), '}]-', relations$from), 
-                             collapse = ' MERGE ')
-  }
-    
-  query <-  paste0('MATCH ', matches, 
-                   ' MERGE ', relation_string)
-    
-  new_rel <- cypherToList(graph, query)
-  
-  return(new_rel)
-  
-}
+source('R/mergeNode.R')
+source('R/mergeRel.R')
+source('R/collapse_list.R')
 
 parse_award <- function(input) {
   
@@ -256,7 +205,7 @@ parse_award <- function(input) {
     pers_node <- NA
   }
   
-  if(!(is.null(in_pers))) {
+  if(!(is.null(pers_node))) {
     if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
     # This means that awards with no listed personnel get assigned to the
     # institutution, but not to a person.  So they're still in the graph.
@@ -296,7 +245,7 @@ parse_award <- function(input) {
     inst_node <- NA
   }
   
-  if(!(is.null(in_pers))) {
+  if(!(is.null(pers_node))) {
     if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
       mergeRel(x = list(type     = 'person', object = pers_node),
              y     = list(type = 'institution', object = inst_node),
@@ -314,13 +263,15 @@ parse_award <- function(input) {
   
 }
 
-build_nodes <- nsf_files %>% sample(500) %>% map(function(x) {test <- try(parse_award(read_award(x))); ifelse('try-error' %in% class(test), x, test)})
+build_nodes <- nsf_files %>% map(function(x) {test <- try(parse_award(read_award(x))); ifelse('try-error' %in% class(test), x, test)})
 
 # The failed nodes:
 failed <- unlist(build_nodes)
 for(i in 1:length(failed)) {
+  cat(i)
   test <- read_award(failed[i]) %>% parse_award
+  
 }
 
-input <- read_award(failed[3])
+input <- read_award(failed[1])
 input
