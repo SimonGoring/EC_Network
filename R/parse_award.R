@@ -1,6 +1,8 @@
 
 parse_award <- function(input) {
   
+  ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
+  
   # The award number is going to be the key identifier for all relationships
   # and for the award itself:
   award_no <- unlist(input$Award$AwardID)
