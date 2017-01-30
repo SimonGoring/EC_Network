@@ -1,49 +1,3 @@
-library(dplyr)
-library(purrr)
-library(multidplyr)
-library(RNeo4j)
-
-file <- 'data/input/awards/9496153.xml'
-
-nsf_files      <- data.frame(files = list.files('data/input/awards',
-                                                full.names = TRUE, pattern = '.xml'),
-                             stringsAsFactors = FALSE)
-
-nsf_files$group <- (1:length(nsf_files) %% 4 + 1)
-                   
-read_award <- function(file) {
-  input <- xml2::read_xml(file)
-  input <- xml2::as_list(input)
-  
-  input
-}
-
-source('R/mergeNode.R')
-source('R/mergeRel.R')
-source('R/collapse_list.R')
-
-cluster <- multidplyr::create_cluster(3)
-
-by_group <- nsf_files %>%
-  partition(group, cluster = cluster)
-
-cluster %>% cluster_library(packages = "dplyr") %>% 
-  cluster_library(packages = "purrr")  %>%
-  cluster_library(packages = "xml2")   %>%
-  cluster_library(packages = "RNeo4j") %>%
-  cluster_assign_value("read_award", read_award) %>% 
-  cluster_assign_value("mergeRel",   mergeRel)   %>% 
-  cluster_assign_value("mergeNode",  mergeNode)
-
-files_in_parallel <- by_group %>% # Use by_group party_df
-  mutate(
-    lists = map(.x = files, 
-                       ~ parse_award(read_award(.x))
-    )
-  ) %>%
-  collect() # Special collect() function to recombine partitions
-
-ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
 
 parse_award <- function(input) {
   
@@ -70,7 +24,7 @@ parse_award <- function(input) {
     
     mergeNode(org, graph = ec_graph, type = "organization")
   }
-
+  
   in_orgs <- input$Award[names(input$Award) == 'Organization']
   
   # I used ifelse, but it wasn't returning the right object:
@@ -81,7 +35,7 @@ parse_award <- function(input) {
   } else {
     org_node <- NA
   }
-
+  
   # Program ###
   
   prog_parse <- function(x) {
@@ -132,7 +86,7 @@ parse_award <- function(input) {
                   expirationDate = unlist(input$Award$AwardExpirationDate),
                   instrument     = unlist(input$Award$AwardInstrument),
                   abstract       = unlist(input$Award$AbstractNarration))
-                  
+    
     awd_node <- mergeNode(award, graph = ec_graph, type = "award")
     
     if (!all(NA %in% prog_node)) {
@@ -181,8 +135,8 @@ parse_award <- function(input) {
   
   if(!(is.null(pers_node))) {
     if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
-    # This means that awards with no listed personnel get assigned to the
-    # institutution, but not to a person.  So they're still in the graph.
+      # This means that awards with no listed personnel get assigned to the
+      # institutution, but not to a person.  So they're still in the graph.
       mergeRel(x     = list(type = 'person', object = pers_node),
                y     = list(type = 'award', object = awd_node),
                type  = list(type = 'awarded_to', data = list(award = award_no)),
@@ -222,9 +176,9 @@ parse_award <- function(input) {
   if(!(is.null(pers_node))) {
     if(! all(is.na(unlist(pers_node, recursive = TRUE)))) {
       mergeRel(x = list(type     = 'person', object = pers_node),
-             y     = list(type = 'institution', object = inst_node),
-             type  = list(type = 'employed_by', data = list(award = award_no)),
-             graph = ec_graph)
+               y     = list(type = 'institution', object = inst_node),
+               type  = list(type = 'employed_by', data = list(award = award_no)),
+               graph = ec_graph)
     }
   }
   
@@ -236,16 +190,3 @@ parse_award <- function(input) {
   return(data.frame(award = award_no, success = 0, message = "You're the best!"))
   
 }
-
-build_nodes <- nsf_files %>% map(function(x) {test <- try(parse_award(read_award(x))); ifelse('try-error' %in% class(test), x, test)})
-
-# The failed nodes:
-failed <- unlist(build_nodes)
-for(i in 1:length(failed)) {
-  cat(i)
-  test <- read_award(failed[i]) %>% parse_award
-  
-}
-
-input <- read_award(failed[1])
-input
