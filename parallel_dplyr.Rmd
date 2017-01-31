@@ -20,7 +20,7 @@ In general, I like it a lot.  It speaks to the increasing utility and appeal of 
 
 # Getting Set Up
 
-For this post I wound up downloading the entirety of the [NSF's awards database](https://www.nsf.gov/awardsearch/download.jsp).  This consists of a large number of XML files, aggregated into zip files, organized by year.  For the project I set up a project folder with the following structure:
+For this post I wound up downloading the entirety of the [NSF's awards database](https://www.nsf.gov/awardsearch/download.jsp).  This consists of a large number of XML files, aggregated into zip files, organized by year.  I am using my [EC_Network](https://github.com/SimonGoring/EC_Network) repository on GitHub to manage the development, and I set up a project folder with the following structure:
 
 ```
 .
@@ -66,7 +66,7 @@ loaded via a namespace (and not attached):
 [7] tibble_1.2     Rcpp_0.12.8   
 ```
 
-The original script ran in two steps, all of this is in my [EC_Network GitHub .  The first step simply read in the files.  There were over 400,000 files in the NSF dataset, each representing a single award to a single institution.  The awards were read in by chaining `read_xml()` and `as_list()` from the `xml2` package.  This then produced a long list of elements that could be processed.  From there I used `purrr`'s `map()` function to apply `read_award()` and then the `parse_award()` function to each filename.
+[The original script](https://github.com/SimonGoring/EC_Network/commit/fcf62c0ea0305ec941a0e19f5d2d338d3f285b9f) ran in two steps.  The first step simply read in the files.  There were over 400,000 files in the NSF dataset, each representing a single award to a single institution.  The awards were read in by chaining `read_xml()` and `as_list()` from the `xml2` package.  This then produced a long list of elements that could be processed.  From there I used `purrr`'s `map()` function to apply `read_award()` and then the `parse_award()` function to each filename.
 
 The actual `parse_award()` function doesn't really return anything.  It takes all the elements from each XML file and turns them into nodes & relationships within a graph, similar to the one described in my previous post using `neo4j` and R.  There is now more information in each node, including more detailled information about the institution and the award itself.  The full schema for the NSF award XML files is available from multiple locations, including [this helpful GitHub repository](https://github.com/macks22/nsf-award-data/blob/master/docs/nsf-xml-schema-details.md).
 
@@ -141,8 +141,16 @@ timer <- timer %>% gather(class, time, -X)
 
 library(ggplot2)
 
-ggplot(timer, aes(x = X, y = time)) + geom_line(aes(color = class))
+ggplot(timer, aes(x = X, y = time)) + geom_line(aes(color = class)) +
+  xlab('Files Processed') +
+  ylab('System Time (sec)')
 
 ```
 
 We can see a clear speed-up with the parallelization.  The parallel runs are more than 2x faster than the runs in serial, so we can see the penalty for the information exchange and managing the memory overhead (we're using three cores, so if information exchange was perfect we might expect to see a 3x increase).
+
+# Continuing the Story
+
+It's important to note that this is all implemented natively in R.  The other option would be to look at options native to neo4j, such as [bulk LOAD CSV or LOAD JSON tools](https://neo4j.com/blog/bulk-data-import-neo4j-3-0/) for data import.
+
+My suspicion is that the effort of figuring out how to do the bulk data import natively is probably worth it, and would likely result in a much higher time savings than parallelizing in R.
