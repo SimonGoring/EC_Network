@@ -34,19 +34,19 @@ mergeRel <- function(x, y, type, graph, match = TRUE) {
                            from = paste0('(', y_objs$elements, ')'))
   
   if (length(type$data) == 0) {
-    relation_string <- paste0(relations$to, '-[r:', type$type, ']-', relations$from)
-    
+    relation_string <- paste0(relations$to, '<-[r:', type$type, ']-', relations$from)
     
   } else {
     rs <- paste0('r', 1:nrow(relations))
     
-    relation_string <- paste(paste0(relations$to, '-[', rs, ':', type$type, 
+    relation_string <- paste(paste0(relations$to, '<-[', rs, ':', type$type, 
                                     ']-', relations$from), 
                              collapse = ' MERGE ')
     
     if (match == TRUE) {
       # We're going to add elements to the match:
-      on_match <- paste0(' ON MATCH SET ', rs, '.', names(type$data), '=', rs, '.', names(type$data), ' + \'', type$data, '\'')
+      on_match <- paste0(' ON CREATE SET ', rs, '.', names(type$data), '= [\'',type$data, '\']',
+                        '  ON MATCH SET ', rs, '.', names(type$data), '=', rs, '.', names(type$data), ' + \'', type$data, '\'')
     }
   }
   
