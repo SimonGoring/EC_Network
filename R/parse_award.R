@@ -7,6 +7,17 @@ parse_award <- function(input) {
   # and for the award itself:
   award_no <- unlist(input$Award$AwardID)
   
+  # For now, let's just cut things beyond 2005:
+  year <- as.Date(input$Award$AwardEffectiveDate[[1]], format = "%d/%m/%Y")
+  
+  if(length(year) == 0 | is.na(year)) {
+    return(NULL)
+  }
+  
+  if(year < as.Date("01/01/2005", format = "%d/%m/%Y")) {
+    return(NULL)
+  }
+  
   # It looks like Organization only ever has one unit:
   
   # We're going to bail on Fellowships, which are assigned to only a single person:
@@ -184,10 +195,14 @@ parse_award <- function(input) {
     }
   }
   
-  mergeRel(x = list(type     = 'award', object = awd_node),
-           y     = list(type = 'institution', object = inst_node),
-           type  = list(type = 'administered_by', data = list(award = award_no)),
-           graph = ec_graph)
+  if(!is.null(inst_node)) {
+    if(! all(is.na(unlist(inst_node, recursive = TRUE)))) {
+      mergeRel(x = list(type     = 'award', object = awd_node),
+               y     = list(type = 'institution', object = inst_node),
+               type  = list(type = 'administered_by', data = list(award = award_no)),
+               graph = ec_graph)
+    }
+  }
   
   return(data.frame(award = award_no, 
                     success = 1, 

@@ -53,6 +53,7 @@ mergeRel <- function(x, y, type, graph, match = TRUE) {
   query <-  paste0('MATCH ', matches, 
                    ' MERGE ', relation_string)
   
+  
   if (match == TRUE) {
     query <- paste0(query, paste(on_match, collapse = ' '))
   }

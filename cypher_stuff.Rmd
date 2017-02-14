@@ -1,0 +1,82 @@
+---
+title: "Network analytics"
+output: html_document
+---
+
+# Connecting to the database
+
+```{r}
+
+library(dplyr)
+library(purrr)
+library(RNeo4j)
+library(ggplot2)
+
+  ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
+  
+```
+
+Some simple stats:
+
+Total number of nodes:
+`r unlist(RNeo4j::cypherToList(ec_graph, 'MATCH (n) RETURN count(n)'))`
+
+Total number of awards:
+`r unlist(RNeo4j::cypherToList(ec_graph, "MATCH (n:award) RETURN count(n)"))`
+
+Average PIs per grant on all grants
+
+```{r}
+aa <- RNeo4j::cypherToList(ec_graph, "match q = (p:person)-[r]-(n:award) RETURN n, count(p) AS people")
+
+aa %>% map(function(x)x$people) %>% unlist %>% mean
+
+```
+
+Average PIs per grant on Geosciences Grants
+
+```{r}
+aa <- RNeo4j::cypherToList(ec_graph, "match q = (p:person)-[r]-(n:award)-[s]-(o:organization) WHERE o.directorate =~ '.*Geoscience.*' RETURN n, count(p) AS people")
+
+aa %>% map(function(x)x$people) %>% unlist %>% mean
+
+```
+
+
+Average PIs per grant on EarthCube Grants
+
+```{r}
+aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)-[r]-(n:award) WHERE n.abstract =~ '.*EarthCube.*' RETURN n.id, count(p) AS people")
+
+aa %>% map(function(x)x$people) %>% unlist %>% mean
+
+```
+
+All People by Year:
+```{r}
+
+  aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)--(n:award) WHERE exists(n.effectiveDate) RETURN n.id, n.effectiveDate AS date, count(p) AS people") %>% 
+  bind_rows %>% 
+  mutate(date_code = as.Date(date, format = "%d/%m/%Y"))
+
+ggplot(aa, aes(x = date_code, y = people)) + 
+  geom_point(alpha = 0.5) + 
+  geom_smooth() +
+  scale_y_log10()
+
+```
+
+All EarthCube Grants by Year:
+
+```{r}
+
+  aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)--(n:award) WHERE exists(n.effectiveDate) AND n.abstract =~ '.*EarthCube.*' RETURN n.id, n.effectiveDate AS date, count(p) AS people") %>% 
+  bind_rows %>% 
+  mutate(date_code = as.Date(date, format = "%d/%m/%Y"))
+
+ggplot(aa, aes(x = date_code, y = people)) + 
+  geom_point(alpha = 0.5) + 
+  geom_smooth() +
+  scale_y_log10()
+
+```

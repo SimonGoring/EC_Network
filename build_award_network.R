@@ -23,6 +23,8 @@ source('R/mergeRel.R')
 source('R/collapse_list.R')
 source('R/parse_award.R')
 
+#####################################################
+# Parallel way:
 cluster <- multidplyr::create_cluster(3)
 
 by_group <- nsf_files %>% sample_n(nrow(nsf_files)) %>%
@@ -46,6 +48,14 @@ files_in_parallel <- by_group %>% # Use by_group party_df
   ) %>%
   collect() # Special collect() function to recombine partitions
 
+#################################################
+#  Serial Way:
+nsf_files <- nsf_files[sample(nrow(nsf_files)), ]
+
+for(i in (i-1):nrow(nsf_files)) {
+  parse_award(read_award(nsf_files[i,1]))
+}
+
 # The failed nodes:
 failed <- unlist(build_nodes)
 for(i in 1:length(failed)) {
@@ -56,3 +66,5 @@ for(i in 1:length(failed)) {
 
 input <- read_award(failed[1])
 input
+
+

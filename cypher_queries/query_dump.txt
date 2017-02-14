@@ -1,0 +1,9 @@
+MERGE (x1:award {no:'1001', title:'abc'}) 
+ON CREATE SET x1 = {no:'1001', title:'abc'} RETURN x1
+  
+MERGE (x2:program {no:'1002', title:'cde'}) 
+ON CREATE SET x2 = {no:'1002', title:'cde'} RETURN x2
+
+MERGE (x1:award {no:'1001', title:'abc'})-[r:program_of]-(x2:program {no:'1002', title:'cde'})
+ON CREATE SET r.award = [x1.no] 
+ON MATCH SET r.award = r.award + x1.no RETURN r
