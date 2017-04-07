@@ -7,21 +7,33 @@ parse_award <- function(input) {
   # and for the award itself:
   award_no <- unlist(input$Award$AwardID)
   
+  award_in_set <- cypherToList(ec_graph, 
+                               paste0("MATCH (n:award) WHERE n.id =~'", 
+                                      award_no, "' RETURN count(n)")) %>% 
+    unlist
+  
+  if(!award_in_set == 0) {
+    cat('Award already entered.\n')
+    return(NULL)
+  }
+  
   # For now, let's just cut things beyond 2005:
-  year <- as.Date(input$Award$AwardEffectiveDate[[1]], format = "%d/%m/%Y")
+  year <- input$Award$AwardEffectiveDate[[1]] %>% lubridate::dmy()
   
   if(length(year) == 0 | is.na(year)) {
+    cat('No year information.\n')
     return(NULL)
   }
   
-  if(year < as.Date("01/01/2005", format = "%d/%m/%Y")) {
-    return(NULL)
-  }
+  #if(year < as.Date("01/01/2005", format = "%d/%m/%Y")) {
+  #  return(NULL)
+  #}
   
   # It looks like Organization only ever has one unit:
   
   # We're going to bail on Fellowships, which are assigned to only a single person:
   if('Fellowship' %in% unlist(input$Award$AwardInstrument)) {
+    cat('Fellowship.\n')
     return(data.frame(award = award_no, success = 0, message = 'Fellowship'))
   }
   
@@ -66,7 +78,7 @@ parse_award <- function(input) {
     }
   }
   
-  in_prog <- input$Award[names(input$Award) %in% c('ProgramReference', 'ProgramElement')]
+  in_prog <- input$Award[names(input$Award) %in% c('ProgramElement')]
   
   if (length(in_prog) == 1) {
     prog_node <- prog_parse(in_prog)
@@ -80,9 +92,29 @@ parse_award <- function(input) {
   if (!all(NA %in% prog_node)) {
     na <-   mergeRel(x     = list(type = 'program', object = prog_node),
                      y     = list(type = 'organization', object = org_node),
-                     type  = list(type = 'program_of', data = list(award = award_no)),
+                     type  = list(type = 'program_element', data = list(award = award_no)),
                      graph = ec_graph)
   } 
+  
+  
+  in_prog <- input$Award[names(input$Award) %in% c('ProgramReference')]
+  
+  if (length(in_prog) == 1) {
+    prog_node <- prog_parse(in_prog)
+  } else if (length(in_prog) > 1) {
+    prog_node <- lapply(in_prog, prog_parse)
+  } else {
+    prog_node <- NA
+  }
+  
+  # Now, combine the Program and Organization elements
+  if (!all(NA %in% prog_node)) {
+    na <-   mergeRel(x     = list(type = 'program', object = prog_node),
+                     y     = list(type = 'organization', object = org_node),
+                     type  = list(type = 'program_reference', data = list(award = award_no)),
+                     graph = ec_graph)
+  } 
+  
   
   # Award :
   if (!length(input$Award$AwardID) == 0) {
@@ -126,6 +158,7 @@ parse_award <- function(input) {
     }
     
     if (length(x$FirstName) == 0 & length(x$LastName) == 0 | "DATA NOT AVAILABLE" %in% x$LastName) {
+      cat('No names associated with the award.')
       return(NULL)
     }
     
@@ -203,6 +236,8 @@ parse_award <- function(input) {
                graph = ec_graph)
     }
   }
+  
+  cat('Award entered successfully\n')
   
   return(data.frame(award = award_no, 
                     success = 1, 

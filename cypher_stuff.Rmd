@@ -1,42 +1,120 @@
 ---
 title: "Network analytics"
-output: html_document
+output:
+  html_document:
+    code_folding: show
+    highlight: pygment
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  word_document:
+    reference_docx: styles/word_template.docx
+    toc: yes
+    toc_depth: '3'
 ---
 
 # Connecting to the database
 
-```{r}
+The database is generated using a separate file that runs parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.
+
+```{r, results='hide', message=FALSE, warning=FALSE}
 
 library(dplyr)
 library(purrr)
 library(RNeo4j)
 library(ggplot2)
+library(lubridate)
 
-  ec_graph <- startGraph("http://localhost:7474/db/data", username = "neo4j", password = "c@mpf1re")
+ec_graph <- RNeo4j::startGraph("http://localhost:7474/db/data", 
+                               username = "neo4j", 
+                               password = "c@mpf1re")
   
+end_table <- read.csv('data/output/end_table.csv') %>% mutate(year = as_date(year))
+
+sizes <- list.files('data/input/awards/', full.names = TRUE) %>%
+  map_dbl(function(x)file.info(x)$size)
+
 ```
 
-Some simple stats:
+The database is relatively large, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the datbase has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early itterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
 
-Total number of nodes:
-`r unlist(RNeo4j::cypherToList(ec_graph, 'MATCH (n) RETURN count(n)'))`
+# Some Simple Stats
 
-Total number of awards:
-`r unlist(RNeo4j::cypherToList(ec_graph, "MATCH (n:award) RETURN count(n)"))`
+To get a sense of what kinds of things we're looking at, we need to understand the key data objects.  There are nodes for awards, people, institutions, and NSF programs and organizations.  Of the total `r nrow(end_table)`, a total of `r nrow(end_table %>% filter(is.na(year)))` have no posted year for the award.  We are interested in patterns of awards since 2000, and we find that `r nrow(end_table %>% filter(year > as_date('1999-12-31')))` awards meet this condition.
 
-Average PIs per grant on all grants
+## Unique Node Types
+
+Of the five unique node types, `award` has by far the highest number of nodes, followed by `person`.  While these numbers are likely to be representative of the overall pattern in node size, they don't reflect the true numbers since `people` and `award` are likely to contain a number of duplicates.
+
+```{r, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
+RNeo4j::cypherToList(ec_graph, 
+                     'START r=node(*) 
+                      RETURN distinct labels(r) as nodes, count(r) as count') %>% 
+  bind_rows() %>% 
+  mutate(nodes = unlist(nodes)) %>% 
+  arrange(desc(count))
+```
+
+Duplicates may be identified, in part, through string matches (in particular for `award`), however, for other node types, such as `people`, matches are more difficult to determine, since an individual may both move institutions and share a name with another individual.  Approaches at linking individuals across such moves, and with common names have been undertaken before, where proximity is determined not only by exact name matches, but also by matching networks of co-authors.  In this project we are interested in analysis year by year and will disregard potential effects of unique `person` nodes.
+
+## Unique Relationship Types
+
+Average PIs per grant on all grants, querying the database for all people linked to awards through a single link.  I've added in the program constraint, because it lets us also assess differences between programs.  Because an award might have multiple programs we need to output the awards, group by award ID, but also group by program.
+
+```{r, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
+
+RNeo4j::cypherToList(ec_graph, 
+                     'START r=relationship(*)
+                      RETURN distinct type(r) as edges, count(r) as count') %>% 
+  bind_rows() %>% 
+  mutate(edges = unlist(edges)) %>% 
+  arrange(desc(count))
+
+```
+
+Here we see that the links for `funded_by`, which link the `program` and the `award` have a much higher value than the number of awards.  In principle we might expect that each award is funded by only a single `organization`, but in practice we find that many awards are funded by multiple organizations.  Similarly, `awarded_to`, which links an `award` to `people` is also high, because it is again possible for a single award to have multiple awardees at a single institution.  We begin to have fewer relationships per `award` nodes when we link `award` and `institution` with the `administered` relationship, and so on.  This is all to say that the numbers of edges do not seem to indicate any large underlying problems with our model.
+
+To ensure that we were able to follow paths accurately, we embedded the award number into each edge relationship using the `award` property.  This means that for some edges (particularly those with few edges, such as `program_reference`) there are likely to be very many `award` elements, wheras, for those linking an `award` to a `person` there are likely to be few `award` elements in the `awarded_to` relationship.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# This tells us how many awards use each path.  From this (awards per edge) we can then
+# look at distributions of award numbers per relationship type.
+
+awards_per_edge <- ec_graph %>% 
+  cypherToList('START r=relationship(*) RETURN type(r) AS type, r.award AS award') %>% 
+  map(function(x)data.frame(type = x$type, length = length(x$award))) %>% 
+  bind_rows()
+
+```
 
 ```{r}
-aa <- RNeo4j::cypherToList(ec_graph, "match q = (p:person)-[r]-(n:award) RETURN n, count(p) AS people")
+# This is a big crunch. . .
+pi_perGrant <- ec_graph %>% 
+  RNeo4j::cypherToList("match q = (p:person)-[r:awarded_to]-(n:award)-[s:funded_by]-(o:program) 
+                        WHERE n.id IN r.award AND n.id IN s.award
+                        RETURN n.id AS id, n.title AS title, n.amount AS amount, 
+                               o.program AS program, count(p) AS people")
 
-aa %>% map(function(x)x$people) %>% unlist %>% mean
+pi_perGrant_tbl <- pi_perGrant %>% 
+  bind_rows() %>% 
+  group_by(program) %>% 
+  summarise(mean_peeps = mean(people),
+            count = n())
 
 ```
 
 Average PIs per grant on Geosciences Grants
 
 ```{r}
-aa <- RNeo4j::cypherToList(ec_graph, "match q = (p:person)-[r]-(n:award)-[s]-(o:organization) WHERE o.directorate =~ '.*Geoscience.*' RETURN n, count(p) AS people")
+aa <- RNeo4j::cypherToList(ec_graph, 
+                           "match q = (p:person)-[r]-(n:award)-[s]-(o:organization) 
+                            WHERE o.directorate =~ '.*Geoscience.*' 
+                            RETURN n, count(p) AS people")
 
 aa %>% map(function(x)x$people) %>% unlist %>% mean
 
@@ -46,7 +124,9 @@ aa %>% map(function(x)x$people) %>% unlist %>% mean
 Average PIs per grant on EarthCube Grants
 
 ```{r}
-aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)-[r]-(n:award) WHERE n.abstract =~ '.*EarthCube.*' RETURN n.id, count(p) AS people")
+aa <- RNeo4j::cypherToList(ec_graph, 
+                           "match (p:person)-[r]-(n:award) WHERE n.abstract =~ '.*EarthCube.*' 
+                            RETURN n.id, count(p) AS people")
 
 aa %>% map(function(x)x$people) %>% unlist %>% mean
 
@@ -55,7 +135,9 @@ aa %>% map(function(x)x$people) %>% unlist %>% mean
 All People by Year:
 ```{r}
 
-  aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)--(n:award) WHERE exists(n.effectiveDate) RETURN n.id, n.effectiveDate AS date, count(p) AS people") %>% 
+  aa <- RNeo4j::cypherToList(ec_graph, 
+                             "match (p:person)--(n:award) WHERE exists(n.effectiveDate) 
+                              RETURN n.id, n.effectiveDate AS date, count(p) AS people") %>% 
   bind_rows %>% 
   mutate(date_code = as.Date(date, format = "%d/%m/%Y"))
 
@@ -70,7 +152,10 @@ All EarthCube Grants by Year:
 
 ```{r}
 
-  aa <- RNeo4j::cypherToList(ec_graph, "match (p:person)--(n:award) WHERE exists(n.effectiveDate) AND n.abstract =~ '.*EarthCube.*' RETURN n.id, n.effectiveDate AS date, count(p) AS people") %>% 
+  aa <- RNeo4j::cypherToList(ec_graph, 
+                             "match (p:person)--(n:award) WHERE exists(n.effectiveDate) 
+                              AND n.abstract =~ '.*EarthCube.*' RETURN n.id, 
+                              n.effectiveDate AS date, count(p) AS people") %>% 
   bind_rows %>% 
   mutate(date_code = as.Date(date, format = "%d/%m/%Y"))
 
@@ -80,3 +165,5 @@ ggplot(aa, aes(x = date_code, y = people)) +
   scale_y_log10()
 
 ```
+
+So there's a shift, but the values in the NSF data have so many single PI grants it's hard to really make much of it.
