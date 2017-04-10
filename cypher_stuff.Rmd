@@ -52,12 +52,14 @@ To get a sense of what kinds of things we're looking at, we need to understand t
 Of the five unique node types, `award` has by far the highest number of nodes, followed by `person`.  While these numbers are likely to be representative of the overall pattern in node size, they don't reflect the true numbers since `people` and `award` are likely to contain a number of duplicates.
 
 ```{r, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
+
 RNeo4j::cypherToList(ec_graph, 
                      'START r=node(*) 
                       RETURN distinct labels(r) as nodes, count(r) as count') %>% 
   bind_rows() %>% 
   mutate(nodes = unlist(nodes)) %>% 
   arrange(desc(count))
+
 ```
 
 Duplicates may be identified, in part, through string matches (in particular for `award`), however, for other node types, such as `people`, matches are more difficult to determine, since an individual may both move institutions and share a name with another individual.  Approaches at linking individuals across such moves, and with common names have been undertaken before, where proximity is determined not only by exact name matches, but also by matching networks of co-authors.  In this project we are interested in analysis year by year and will disregard potential effects of unique `person` nodes.
@@ -92,7 +94,7 @@ awards_per_edge <- ec_graph %>%
 
 ```
 
-```{r}
+```{r, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
 # This is a big crunch. . .
 pi_perGrant <- ec_graph %>% 
   RNeo4j::cypherToList("match q = (p:person)-[r:awarded_to]-(n:award)-[s:funded_by]-(o:program) 
@@ -108,20 +110,52 @@ pi_perGrant_tbl <- pi_perGrant %>%
 
 ```
 
-Average PIs per grant on Geosciences Grants
+# The extent of duplicate grants
+## How many grants are duplicates?
 
-```{r}
-aa <- RNeo4j::cypherToList(ec_graph, 
-                           "match q = (p:person)-[r]-(n:award)-[s]-(o:organization) 
-                            WHERE o.directorate =~ '.*Geoscience.*' 
-                            RETURN n, count(p) AS people")
+One challenge is that different institutions submit subawards of the same proposal.  We want to fid out, first, how many exact duplicates there are, how many are the same but with different capitalization or punctuation, and then a distribution of approximate matches for individual grants.
 
-aa %>% map(function(x)x$people) %>% unlist %>% mean
+```{r, results = 'as-is'}
+
+all_titles <- RNeo4j::cypherToList(ec_graph, 
+                 "MATCH q = (p:person)-[r]-(n:award)-[s]-(o:organization)
+                  RETURN n.title AS title, n.amount AS amount, n.instrument AS instrument, count(p) AS people") %>% 
+  map(as_data_frame) %>% 
+  bind_rows
+
+count_table <- all_titles %>% group_by(people) %>% summarise(count = n())
+
+colnames(count_table) <- c("Title Frequency", "Number of Awards")
+knitr::kable(replicates)
 
 ```
 
+So, we can see that there are definitely duplicate awards.  It's surprising to me (SJG) that there are so many single institution awards, but I've only ever been on multi-institution awards and so my experience may be atypical.
 
-Average PIs per grant on EarthCube Grants
+```{r}
+
+count_table <- all_titles %>% group_by(people, instrument) %>% summarise(count = n())
+
+count_table <- count_table %>% group_by(instrument) %>% filter(n() > 2)
+
+ggplot(count_table, aes(x = people, y = count)) + geom_bar(stat = 'identity')+ facet_wrap(~instrument, scales = 'free')
+
+```
+
+This gives us a better sense, both of how often multi-institution grant occur, but also how that varies across Award Instrument.
+
+## Looking at Duplicates
+
+So, lets start off by examining the grants with the most duplicate names.
+
+```{r}
+
+mass_award <- all_titles %>% group_by(title, instrument) %>% filter(n() > 5) %>% summarise(count=n())
+
+knitr::kable(mass_award)
+```
+
+# Average PIs per grant on EarthCube Grants
 
 ```{r}
 aa <- RNeo4j::cypherToList(ec_graph, 
