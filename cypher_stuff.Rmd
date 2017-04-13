@@ -225,10 +225,13 @@ All EarthCube Grants by Year:
 
   aa <- RNeo4j::cypherToList(ec_graph, 
                              "match (p:person)-[r]-(n:award) WHERE exists(n.effectiveDate) 
-                              AND n.abstract =~ '.*EarthCube.*' RETURN n.id, 
+                              AND n.abstract =~ '.*EarthCube.*' RETURN n.id,
+                              n.title as title,
                               n.effectiveDate AS date, count(p) AS people") %>% 
   bind_rows %>% 
-  mutate(date_code = as.Date(date, format = "%d/%m/%Y"))
+  mutate(date_code = as.Date(date, format = "%d/%m/%Y")) %>% 
+  group_by(title) %>% 
+  summarise(total_people = sum(people))
 
 ggplot(aa, aes(x = date_code, y = people)) + 
   geom_point(alpha = 0.5) + 
@@ -238,3 +241,53 @@ ggplot(aa, aes(x = date_code, y = people)) +
 ```
 
 So there's a shift, but the values in the NSF data have so many single PI grants it's hard to really make much of it.
+
+# Diversity of Grant Networks
+
+```{r}
+
+year_div <- function(x) {
+  
+  RNeo4j::cypherToList(ec_graph, 
+                           paste0(
+
+'MATCH (a:person)--(c:award)--(e:person)--(f:award)--(h:organization)
+MATCH (c)-[r:funded_by]-(o:organization)
+
+WHERE c.id IN r.award
+
+WITH DISTINCT a as people, 
+     h as orgs, 
+     split(c.effectiveDate, "/") AS yya, 
+     split(f.effectiveDate, "/") AS yyb, 
+     e, c, f, 
+     o.division AS pi_division, 
+     o.directorate AS pi_directorate,
+     (CASE WHEN c.abstract =~ ".*EarthCube.*" THEN 1 ELSE 0 END) AS earthcube
+
+WHERE yya[2] =~ "', x, '" AND yyb[2] =~ "', x, '" AND c <> f AND people <> e
+
+RETURN people.id AS id,
+       people.email AS email,
+       pi_directorate,
+       pi_division,
+       collect(orgs.directorate) AS directorates, 
+       collect(orgs.division) as divisions, 
+       yya[2] AS person_year, 
+       collect(yyb[2]), earthcube')) %>% 
+  map(function(x){data.frame(name = x$id,
+                             email = x$email,
+                             pi_directorate = x$pi_directorate,
+                             directorates = unlist(x$directorates),
+                             divisions    = unlist(x$divisions),
+                             year         = x$person_year,
+                             earthcube    = x$earthcube,
+                             stringsAsFactors = FALSE)}) %>% 
+  bind_rows()
+}
+
+big_table <- (2000:2017) %>% map(year_div) %>% bind_rows()
+
+big_table %>% group_by(name, email, year) %>% summarise(div = n())
+
+```
