@@ -22,7 +22,7 @@ output:
 
 The database is generated using a separate file that runs parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.
 
-```{r, connect_to_db, results='hide', message=FALSE, warning=FALSE}
+```{r, connect_to_db, results='hide', message=FALSE, warning=FALSE, echo = FALSE}
 
 library(dplyr)
 library(purrr)
@@ -43,6 +43,14 @@ sizes <- list.files('data/input/awards/', full.names = TRUE) %>%
 
 The database is relatively large, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the datbase has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early itterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
 
+# Data Model
+
+ <object type="image/svg+xml" data="images/BroaderDiagram.svg">
+ Your browser does not support SVG images
+ </object>
+ 
+ The data model uses the [XML Schema for NSF awards](https://github.com/macks22/nsf-award-data/blob/master/docs/nsf-xml-schema-details.md) and is centered around the `award` node.  The `award` node includes `AwardID`, `AwardTitle`, `AbstractNarration`, `AwardAmount`, `AARAAmount`, and `AwardInstrument`.  `AwardEffectiveDate` and `AwardExpirationDate` are expressed as relationships with `Year` nodes.  The same relationship occurs with `MinAmdLetterDate` and `MaxAmdLetterDate`.
+
 # Some Simple Stats
 
 To get a sense of what kinds of things we're looking at, we need to understand the key data objects.  There are nodes for awards, people, institutions, and NSF programs and organizations.  Of the total `r nrow(end_table)`, a total of `r nrow(end_table %>% filter(is.na(year)))` have no posted year for the award.  We are interested in patterns of awards since 2000, and we find that `r nrow(end_table %>% filter(year > as_date('1999-12-31')))` awards meet this condition.
@@ -53,12 +61,14 @@ Of the five unique node types, `award` has by far the highest number of nodes, f
 
 ```{r, count_node_types, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
 
-RNeo4j::cypherToList(ec_graph, 
+node_sizes <- RNeo4j::cypherToList(ec_graph, 
                      'START r=node(*) 
                       RETURN distinct labels(r) as nodes, count(r) as count') %>% 
   bind_rows() %>% 
   mutate(nodes = unlist(nodes)) %>% 
   arrange(desc(count))
+
+knitr::kable(node_sizes)
 
 ```
 
@@ -70,13 +80,14 @@ Average PIs per grant on all grants, querying the database for all people linked
 
 ```{r, count_link_types, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
 
-RNeo4j::cypherToList(ec_graph, 
+edge_size <- RNeo4j::cypherToList(ec_graph, 
                      'START r=relationship(*)
                       RETURN distinct type(r) as edges, count(r) as count') %>% 
   bind_rows() %>% 
   mutate(edges = unlist(edges)) %>% 
   arrange(desc(count))
 
+knitr::kable(edge_size)
 ```
 
 Here we see that the links for `funded_by`, which link the `program` and the `award` have a much higher value than the number of awards.  In principle we might expect that each award is funded by only a single `organization`, but in practice we find that many awards are funded by multiple organizations.  Similarly, `awarded_to`, which links an `award` to `people` is also high, because it is again possible for a single award to have multiple awardees at a single institution.  We begin to have fewer relationships per `award` nodes when we link `award` and `institution` with the `administered` relationship, and so on.  This is all to say that the numbers of edges do not seem to indicate any large underlying problems with our model.
@@ -204,7 +215,7 @@ aa %>% map(function(x)x$people) %>% unlist %>% mean
 ```
 
 All People by Year:
-```{r}
+```{r, people_by_year, message=FALSE, warning=FALSE}
 
   aa <- RNeo4j::cypherToList(ec_graph, 
                              "match (p:person)-[r]-(n:award) WHERE exists(n.effectiveDate) 
@@ -221,7 +232,7 @@ ggplot(aa, aes(x = date_code, y = people)) +
 
 All EarthCube Grants by Year:
 
-```{r}
+```{r, only_ec_byyear}
 
   aa <- RNeo4j::cypherToList(ec_graph, 
                              "match (p:person)-[r]-(n:award) WHERE exists(n.effectiveDate) 
@@ -231,9 +242,9 @@ All EarthCube Grants by Year:
   bind_rows %>% 
   mutate(date_code = as.Date(date, format = "%d/%m/%Y")) %>% 
   group_by(title) %>% 
-  summarise(total_people = sum(people))
+  summarise(total_people = sum(people), date_code = mean(date_code))
 
-ggplot(aa, aes(x = date_code, y = people)) + 
+ggplot(aa, aes(x = date_code, y = total_people)) + 
   geom_point(alpha = 0.5) + 
   geom_smooth() +
   scale_y_log10()
