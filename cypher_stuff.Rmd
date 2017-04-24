@@ -20,7 +20,7 @@ output:
 
 # Connecting to the database
 
-The database is generated using a separate file that runs parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.
+The database is generated using a separate file.  Initially it ran parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.  After visiting some more documentation about `neo4j` I switched to a new implementation, detailled in `writecsv.R`, anf then the `cypher` file `load_csv.cql`.  With these two files I was able to generate a much more robust implementation, even if it did still take a while on my laptop.
 
 ```{r, connect_to_db, results='hide', message=FALSE, warning=FALSE, echo = FALSE}
 
@@ -41,7 +41,7 @@ sizes <- list.files('data/input/awards/', full.names = TRUE) %>%
 
 ```
 
-The database is relatively large, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the datbase has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early itterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
+The database is `r round(sum(file.info(list.files('/var/lib/neo4j/data/databases/graph.db/', all.files = TRUE, recursive = TRUE))$size, na.rm=TRUE)/1000000,0)`, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the datbase has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early itterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
 
 # Data Model
 
