@@ -1,8 +1,7 @@
-
+require(dplyr)
 # x <- 'data/input/awards/0000541.xml'
 
 bind_to_file <- function(x, award_file) {
-  require(dplyr)
   
   is.NullOb <- function(x) (is.null(x) | length(x) == 0) | all(sapply(x, is.null))
   
@@ -124,7 +123,7 @@ start <- proc.time()
 j <- 1
 
 for(i in 1:file_length) {
-  try(bind_to_file(files[i], paste0('award_file_', j,'.csv')))
+  try(bind_to_file(files[i], paste0('award_file.csv')))
   if ((i %% 200) == 0) {
     elapsed <- proc.time()[3] - start[3]
     tpf <-  elapsed / i
@@ -132,10 +131,7 @@ for(i in 1:file_length) {
     end_time <- round((tpf * (file_length - i)) / 60, 0)
 
     message("Run ", i, " of ", file_length, " files.  ", round(tpf, 2), 
-            "s per file. ",end_time,"m remaining. \r", appendLF=FALSE)
+            "s per file. ",end_time,"m remaining.\r", appendLF=FALSE)
     flush.console()
-  }
-  if(i %% 1000) {
-    j <- j + 1
   }
 }
