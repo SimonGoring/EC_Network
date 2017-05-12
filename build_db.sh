@@ -3,6 +3,11 @@ set -e
 
 ulimit -n 40000
 
+neo4j stop
+neo4j start
+
+sleep 10s
+
 # Clean up the DB and then set the constraints (only happens once):
 neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/clear.cql -v 
 
@@ -16,10 +21,13 @@ echo Finished setting constraints.
 # There are 1221151 lines in the file (including the header)
 
 # I was running into memory errors, I'm going to try cutting the award file into smaller chunks:
-for i in {1..10}
+for i in {1..20}
 	do
-		START=$((($i-1)*100000+1))
-		END=$(($i*100000))
+		echo ######################################################		
+		echo Starting run $i
+
+		START=$((($i-1)*50000+1))
+		END=$(($i*50000))
 
 		# Pass in the start and ending lines, print the first line, exit after the `end`
 		# and start running from the first line in the start.
@@ -45,8 +53,10 @@ for i in {1..10}
 
 		neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/load_temporal.cql -v
 		echo Finished loading temporal information.
+
 		neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/load_people.cql -v
 		echo Finished loading person information.
+
 		neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/load_directorates.cql -v
 		echo Finished loading directorate information.
 	done
