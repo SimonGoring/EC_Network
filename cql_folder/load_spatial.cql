@@ -5,7 +5,7 @@ WITH DISTINCT line
 
 // Since we add the AwardID along the relationship paths, we need to do the awards first.
 // We know that all awards have unique AwardIDs:
-MERGE (award:Award {AwardID: line.AwardID})
+MATCH (award:Award {AwardID: line.AwardID})
 
 MERGE ( state:State { Name: UPPER(line.`Institution.StateName`) })
     ON CREATE SET state.Code = UPPER(line.`Institution.StateCode`)
