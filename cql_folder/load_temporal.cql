@@ -27,19 +27,7 @@ WITH DISTINCT line,
     WHEN line.MaxAmdLetterDate = 'None' 
          OR line.MaxAmdLetterDate = null
          OR line.MaxAmdLetterDate = 'NA' THEN [0,0,0]
-    ELSE SPLIT(line.MaxAmdLetterDate, '/')  END as maxAmdLetterDate,
-    
-    CASE
-    WHEN line.`Investigator.StartDate` = 'None' 
-         OR line.`Investigator.StartDate` = null 
-         OR line.`Investigator.StartDate` = 'NA' THEN [0,0,0]
-    ELSE SPLIT(line.`Investigator.StartDate`, '/')  END as invStartDate,
-    
-    CASE
-    WHEN line.`Investigator.EndDate` = 'None' 
-         OR line.`Investigator.EndDate` = null 
-         OR line.`Investigator.EndDate` = 'NA' THEN [0,0,0]
-    ELSE SPLIT(line.`Investigator.EndDate`, '/')  END as invEndDate
+    ELSE SPLIT(line.MaxAmdLetterDate, '/')  END as maxAmdLetterDate
 
 MERGE (award:Award {AwardID: line.AwardID})
 
