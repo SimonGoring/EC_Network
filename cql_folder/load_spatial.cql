@@ -22,6 +22,7 @@ MERGE (institution)-[is:In_State]->(state)
     ON CREATE SET is.AwardID = [] + line.AwardID
     ON MATCH SET is.AwardID = is.AwardID + line.AwardID
 
+// This shouldn't be necessary in practice, but there may be a reason for keeping it.
 MERGE (state)-[ic:In_Country]->(country)
     ON CREATE SET ic.AwardID = [] + line.AwardID
     ON MATCH SET ic.AwardID = ic.AwardID + line.AwardID

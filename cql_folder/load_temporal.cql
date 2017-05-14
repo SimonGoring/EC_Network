@@ -29,7 +29,7 @@ WITH DISTINCT line,
          OR line.MaxAmdLetterDate = 'NA' THEN [0,0,0]
     ELSE SPLIT(line.MaxAmdLetterDate, '/')  END as maxAmdLetterDate
 
-MERGE (award:Award {AwardID: line.AwardID})
+MATCH (award:Award {AwardID: line.AwardID})
 
 // Dates for awards - 
 // Here we do two things, we first make the matches, and then we add the

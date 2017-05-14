@@ -11,7 +11,7 @@ MATCH (award:Award {AwardID: line.AwardID})
 MERGE (direct:Directorate {Code: line.`Organization.Code`})
 	ON CREATE SET direct.`Directorate` = line.`Organization.Directorate`
 
-MERGE (division:Division {Division: line.`Organization.Division`})
+MERGE (division:Division {Division: UPPER(line.`Organization.Division`)})
 
 MERGE (direct)-[dwn:Within]-(division)
 	ON CREATE SET dwn.AwardID = [] + line.AwardID
