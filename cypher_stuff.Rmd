@@ -2,6 +2,7 @@
 title: "Network analytics"
 output:
   html_document:
+    self_contined: yes
     code_folding: show
     highlight: pygment
     number_sections: yes
@@ -20,7 +21,7 @@ output:
 
 # Connecting to the database
 
-The database is generated using a separate file.  Initially it ran parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.  After visiting some more documentation about `neo4j` I switched to a new implementation, detailled in `writecsv.R`, anf then the `cypher` file `load_csv.cql`.  With these two files I was able to generate a much more robust implementation, even if it did still take a while on my laptop.
+The database is generated using a separate file.  Initially it ran parallel calls to the `Rscript` command focusing on all NSF awards from the year 2000 onwards. The code is documented in the files `build_award_network` and `batch_run`.  After visiting some more documentation about `neo4j` I switched to a new implementation, detailed in `writecsv.R`, and then the `cypher` file `load_csv.cql`.  With these two files I was able to generate a much more robust implementation, even if it did still take a while on my laptop.
 
 ```{r, connect_to_db, results='hide', message=FALSE, warning=FALSE, echo = FALSE}
 
@@ -30,16 +31,23 @@ library(RNeo4j)
 library(ggplot2)
 library(lubridate)
 
+links <- scan('admin.txt', what = "character")
+
 ec_graph <- RNeo4j::startGraph("http://localhost:7474/db/data", 
-                               username = "neo4j", 
-                               password = "c@mpf1re")
-  
-sizes <- list.files('data/input/awards/', full.names = TRUE) %>%
-  map_dbl(function(x)file.info(x)$size)
+                               username = links[1], 
+                               password = links[2])
+
+if ('sizes.rds' %in% list.files('data/output')) {
+  sizes <- readRDS('data/output/sizes.rds')
+} else {
+  sizes <- list.files('data/input/awards/', full.names = TRUE) %>%
+    map_dbl(function(x)file.info(x)$size)
+  saveRDS(sizes, 'data/output/sizes.rds')
+}
 
 ```
 
-The database is `r round(sum(file.info(list.files('/media/simon/DATA1/neo4j/databases/', all.files = TRUE, recursive = TRUE))$size, na.rm=TRUE)/1000000,0)`, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the datbase has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early itterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
+The database is `r round(sum(file.info(list.files('/media/simon/DATA1/neo4j/databases/', all.files = TRUE, recursive = TRUE, full.names = TRUE))$size, na.rm=TRUE)/1000000,0)`MB, but the RNeo4j package makes manipulating it relatively fast.  Some of the functions used here are relatively straightforward, much of it relies on the `MATCH`/`WHERE` paradigm, matching based on either a `(node)` or `[relationship]`.  The challenge in constructing the database has been managing the accession of the relatively large quantity of data (the raw NSF award XML files total `r round(sum(sizes)/1e9, 1)`GB), and also building a reasonable graph.  A challenge with graph construction is reducing the total number of edges between nodes, building reasonably meaningful nodes, and, in particular, ensuring that queries return results that specifically map to awards across longer graphs.  Early iterations of the model failed to include award number in some of the edge elements, which meant that query results could return very large graphs unintentionally since edges weren't clearly tied to award numbers.
 
 # Data Model
 
@@ -59,12 +67,12 @@ Of the five unique node types, `award` has by far the highest number of nodes, f
 
 ```{r, count_node_types, results = 'as-is', message=FALSE, warning=FALSE, echo=FALSE}
 
-node_sizes <- RNeo4j::cypherToList(ec_graph, 
-                     'START n=node(*) 
-                      RETURN distinct labels(n) as nodes, count(n) as count') %>% 
+node_sizes <- RNeo4j::cypherToList(ec_graph,
+                     'START n=node(*)
+                      RETURN distinct labels(n) as nodes, count(n) as Count') %>% 
   bind_rows() %>% 
-  mutate(nodes = unlist(nodes)) %>% 
-  arrange(desc(count))
+  mutate(Nodes = unlist(nodes)) %>% 
+  arrange(desc(Count))
 
 knitr::kable(node_sizes)
 
@@ -99,7 +107,10 @@ To ensure that we were able to follow paths accurately, we embedded the award nu
 awards_per_edge <- ec_graph %>% 
   cypherToList('START r=relationship(*) RETURN type(r) AS type, SIZE(r.AwardID) AS awards') %>% 
   map(function(x)data.frame(type = x$type, awards = ifelse(length(x$award)==0, 0, x$award), stringsAsFactors=FALSE)) %>% 
-  bind_rows()
+  bind_rows() %>% 
+  filter(!type %in% c('Awarded_to', 'Funded_by', 'Referenced_by', 
+                     'Year_Started', 'Year_Expired', 
+                     'Year_Amended_Min', 'Year_Amended_Max'))
 
 ggplot(data = awards_per_edge, aes(x = awards)) + 
   geom_histogram() + 
@@ -130,8 +141,8 @@ pi_perGrant <- ec_graph %>%
 split_directorate <- function(x) {
   data.frame(ids = x$ids,
              title = x$title,
-             instrument = x$instrument %>% unlist,
-             directorate = x$directorate %>% unlist,
+             instrument = x$instrument %>% unlist %>% tolower,
+             directorate = x$directorate %>% unlist %>% tolower,
              people = x$people,
              stringsAsFactors = FALSE)
   # left_join(y = direct_map, by = "directorate") %>% 
@@ -231,8 +242,8 @@ award_summary <- data.frame(mean = ec_awards %>% map(function(x)x$people) %>% un
   bind_rows
 
 ggplot(people_by_year, aes(x = year, y = people)) + 
-  geom_point(alpha = 0.5) + 
-  geom_smooth() +
+  geom_jitter(alpha = 0.5) + 
+  geom_smooth(method = "gam", formula = y~ s(x)) +
   scale_y_log10()
 
 ```
@@ -254,7 +265,7 @@ All EarthCube Grants by Year:
 
 ggplot(aa, aes(x = year, y = total_people)) + 
   geom_point(alpha = 0.5) + 
-  geom_smooth() +
+  geom_smooth(method = "gam", formula = y ~ x, se = TRUE) +
   scale_y_log10()
 
 ```
@@ -263,50 +274,45 @@ So there's a shift, but the values in the NSF data have so many single PI grants
 
 # Diversity of Grant Networks
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 
-year_div <- function(x) {
-  
-  RNeo4j::cypherToList(ec_graph, 
-                           paste0(
-
-'MATCH (a:person)--(c:award)--(e:person)--(f:award)--(h:organization)
-MATCH (c)-[r:funded_by]-(o:organization)
-
-WHERE c.id IN r.award
-
-WITH DISTINCT a as people, 
-     h as orgs, 
-     split(c.effectiveDate, "/") AS yya, 
-     split(f.effectiveDate, "/") AS yyb, 
-     e, c, f, 
-     o.division AS pi_division, 
-     o.directorate AS pi_directorate,
-     (CASE WHEN c.abstract =~ ".*EarthCube.*" THEN 1 ELSE 0 END) AS earthcube
-
-WHERE yya[2] =~ "', x, '" AND yyb[2] =~ "', x, '" AND c <> f AND people <> e
-
-RETURN people.id AS id,
-       people.email AS email,
-       pi_directorate,
-       pi_division,
-       collect(orgs.directorate) AS directorates, 
-       collect(orgs.division) as divisions, 
-       yya[2] AS person_year, 
-       collect(yyb[2]), earthcube')) %>% 
-  map(function(x){data.frame(name = x$id,
-                             email = x$email,
-                             pi_directorate = x$pi_directorate,
-                             directorates = unlist(x$directorates),
-                             divisions    = unlist(x$divisions),
-                             year         = x$person_year,
-                             earthcube    = x$earthcube,
-                             stringsAsFactors = FALSE)}) %>% 
+pgm_per_yr <- RNeo4j::cypherToList(ec_graph, 
+                'MATCH (p:Person)<-[ap:Awarded_to]-(a:Award)-[ay:Year_Started]-(y:Year)
+                 MATCH (a)-[apr:Funded_by]-(pr:Program)                
+                 WHERE a.AwardID IN apr.AwardID AND
+                       a.AwardID IN ay.AwardID
+                 WITH DISTINCT p as people,
+                      y as year,
+                      SIZE(COLLECT(DISTINCT pr.Text)) as program,
+                      (CASE WHEN a.AbstractNarration =~ ".*EarthCube.*" 
+                            THEN 1 ELSE 0
+                       END) AS earthcube
+                 RETURN people.EmailAddress as EmailAddress, 
+                        people.LastName as LastName, 
+                        people.FirstName as FirstName, 
+                        year.Year as Year, program, earthcube;') %>% 
   bind_rows()
-}
 
-big_table <- (2000:2017) %>% map(year_div) %>% bind_rows()
+# Then we clear everyone without an at symbol:
+clean_per_yr <- pgm_per_yr %>% filter(grepl("@", EmailAddress))
 
-big_table %>% group_by(name, email, year) %>% summarise(div = n())
+zeroed_year <- clean_per_yr %>% 
+  group_by(EmailAddress) %>% 
+  mutate(career_year = Year - min(Year), total_years = max(Year) - min(Year)) %>%
+  arrange(EmailAddress, career_year) %>% filter(total_years > 0)
 
+# That last filter kills about 80k people.
+  
+ggplot(zeroed_year) +
+  geom_jitter(aes(x = career_year, y = program), alpha = 0.1) +
+  xlab("Year since first grant") +
+  ylab("Number of programs applied to")
+
+
+```
+```{r}
+ggplot(zeroed_year %>% filter(career_year == 0)) +
+  geom_jitter(aes(x = program, y = total_years), alpha = 0.1) +
+  xlab("Programs Funding First Grant") +
+  ylab("Career Longevity")
 ```
