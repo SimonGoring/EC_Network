@@ -56,25 +56,14 @@ MATCH (pgrele:Program     {Code: EleCode, Text: EleText})
 
 // Add the directorates and programs:
 
+MERGE (award)-[fby:Funded_by]->(direct)
+MERGE (award)-[fpg:Funded_by]->(pgrele)
+MERGE (award)-[rpg:Referenced_by]->(pgrref)
+
 MERGE (direct)-[dwn:Within]->(division)
 	ON CREATE SET dwn.AwardID = [] + AwardID
 	ON MATCH SET dwn.AwardID = CASE WHEN NOT AwardID IN dwn.AwardID THEN dwn.AwardID + AwardID
 		                       ELSE AwardID END
-
-MERGE (award)-[fby:Funded_by]->(direct)
-	ON CREATE SET fby.AwardID = [] + AwardID
-	ON MATCH SET fby.AwardID = CASE WHEN NOT AwardID IN fby.AwardID THEN fby.AwardID + AwardID
-	                           ELSE fby.AwardID END
-
-MERGE (award)-[fpg:Funded_by]->(pgrele)
-	ON CREATE SET fpg.AwardID = [] + AwardID
-	ON MATCH SET fpg.AwardID = CASE WHEN NOT AwardID IN fpg.AwardID THEN fpg.AwardID + AwardID
-		                                 ELSE fpg.AwardID END
-
-MERGE (award)-[rpg:Referenced_by]->(pgrref)
-	ON CREATE SET rpg.AwardID = [] + AwardID
-	ON MATCH SET rpg.AwardID = CASE WHEN NOT AwardID IN rpg.AwardID THEN rpg.AwardID + AwardID
-		                                 ELSE rpg.AwardID END
 
 MERGE (pgrref)-[pgmof:Program_of]->(division)
 	ON CREATE SET pgmof.AwardID = [] + AwardID

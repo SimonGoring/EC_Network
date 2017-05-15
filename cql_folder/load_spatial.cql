@@ -27,6 +27,4 @@ MERGE (state)-[ic:In_Country]->(country)
     ON CREATE SET ic.AwardID = [] + line.AwardID
     ON MATCH SET ic.AwardID = ic.AwardID + line.AwardID
 
-MERGE (award)-[ai:Administered_by]->(institution)
-    ON CREATE SET ai.AwardID = [] + line.AwardID
-    ON MATCH SET ai.AwardID = ai.AwardID + line.AwardID;
+MERGE (award)-[ai:Administered_by]->(institution);

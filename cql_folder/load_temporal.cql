@@ -41,12 +41,9 @@ MATCH (award:Award {AwardID: line.AwardID})
 MERGE (year:Year {Year: TOINT(effectiveDate[2]) } )
 MERGE (month:Month {Month: TOINT(effectiveDate[0]) } )
 
-MERGE (award)-[yst:Year_Started]-(year)
-	ON CREATE SET yst.AwardID = [] + line.AwardID
-	ON MATCH SET yst.AwardID = CASE WHEN NOT line.AwardID IN yst.AwardID THEN yst.AwardID + line.AwardID
-	                                 ELSE yst.AwardID END
+MERGE (award)-[yst:Year_Started]->(year)
 
-MERGE (year)-[mst:Month_Started]-(month)
+MERGE (year)-[mst:Month_Started]->(month)
 	ON CREATE SET mst.AwardID = [] + line.AwardID
 	ON MATCH SET  mst.AwardID = CASE WHEN NOT line.AwardID IN mst.AwardID THEN mst.AwardID + line.AwardID
 	                                 ELSE mst.AwardID END
@@ -55,12 +52,9 @@ MERGE (year)-[mst:Month_Started]-(month)
 MERGE (year_end:Year {Year: TOINT(expirationDate[2]) } )
 MERGE (month_end:Month {Month: TOINT(expirationDate[0]) } )
 
-MERGE (award)-[yen:Year_Expired]-(year_end)
-	ON CREATE SET yen.AwardID = [] + line.AwardID
-	ON MATCH SET yen.AwardID = CASE WHEN NOT line.AwardID IN yen.AwardID THEN yen.AwardID + line.AwardID
-	                                 ELSE yen.AwardID END
+MERGE (award)-[yen:Year_Expired]->(year_end)
 
-MERGE (year_end)-[men:Month_Expired]-(month_end)
+MERGE (year_end)-[men:Month_Expired]->(month_end)
 	ON CREATE SET men.AwardID = [] + line.AwardID
 	ON MATCH SET men.AwardID = CASE WHEN NOT line.AwardID IN men.AwardID THEN men.AwardID + line.AwardID
 	                                 ELSE men.AwardID END
@@ -69,26 +63,20 @@ MERGE (year_end)-[men:Month_Expired]-(month_end)
 MERGE (year_amdS:Year {Year: TOINT(minAmdLetterDate[2]) } )
 MERGE (month_amdS:Month {Month: TOINT(minAmdLetterDate[0]) } )
 
-MERGE (award)-[yam:Year_Amended_Min]-(year_amdS)
-	ON CREATE SET yam.AwardID = [] + line.AwardID
-	ON MATCH SET yam.AwardID = CASE WHEN NOT line.AwardID IN yam.AwardID THEN yam.AwardID + line.AwardID
-	                                 ELSE yam.AwardID END
+MERGE (award)-[yam:Year_Amended_Min]->(year_amdS)
 
-MERGE (year_amdS)-[mam:Month_Amended_Min]-(month_amdS)
+MERGE (year_amdS)-[mam:Month_Amended_Min]->(month_amdS)
 	ON CREATE SET mam.AwardID = [] + line.AwardID
 	ON MATCH SET mam.AwardID = CASE WHEN NOT line.AwardID IN mam.AwardID THEN mam.AwardID + line.AwardID
 	                                 ELSE mam.AwardID END
 
-// These are ammendment dates.
+// These are amendment dates.
 MERGE (year_amdE:Year {Year: TOINT(maxAmdLetterDate[2])})
 MERGE (month_amdE:Month {Month: TOINT(maxAmdLetterDate[0])})
 
-MERGE (award)-[ymx:Year_Amended_Max]-(year_amdE)
-	ON CREATE SET ymx.AwardID = [] + line.AwardID
-	ON MATCH SET ymx.AwardID = CASE WHEN NOT line.AwardID IN ymx.AwardID THEN ymx.AwardID + line.AwardID
-	                                 ELSE ymx.AwardID END
+MERGE (award)-[ymx:Year_Amended_Max]->(year_amdE)
 
-MERGE (year_amdE)-[mmx:Month_Amended_Max]-(month_amdE)
+MERGE (year_amdE)-[mmx:Month_Amended_Max]->(month_amdE)
 	ON CREATE SET mmx.AwardID = [] + line.AwardID
 	ON MATCH SET mmx.AwardID = CASE WHEN NOT line.AwardID IN mmx.AwardID THEN mmx.AwardID + line.AwardID
 	                                 ELSE mmx.AwardID END;
