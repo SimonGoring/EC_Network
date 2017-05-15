@@ -156,7 +156,12 @@ ggplot(pi_perGrant_tbl) +
   geom_histogram(aes(x = people)) + 
   facet_wrap(~directorate, scales = 'free')
 
-knitr::kable(pi_perGrant_tbl %>% group_by(directorate) %>% summarise(mean = round(mean(people), 2), sd = round(sd(people),2), count = n()))
+knit_table <- pi_perGrant_tbl %>% 
+  group_by(directorate) %>% 
+  summarise(mean = round(mean(people), 2), sd = round(sd(people),2), count = n()) %>%
+  arrange(mean, n)
+
+knitr::kable(pi_perGrant_tbl )
 ```
 
 It's interesting to note the differences here, but, additionally, the fact that many of these.
