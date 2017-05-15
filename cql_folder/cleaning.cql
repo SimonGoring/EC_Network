@@ -111,6 +111,7 @@ SET n.Division = REPLACE(n.Division, "Div ", "Division ");
 MATCH (n:Division) WHERE n.Division =~ "^Divn "
 SET n.Division = REPLACE(n.Division, "Divn ", "Division ");
 
+// Strange Divisions:
 
 MATCH (n:Division) WHERE n.Division = "Direct For Biological Sciences"
 SET n.Division = "Directorate for Biological Sciences";

@@ -1,16 +1,15 @@
-USING PERIODIC COMMIT 100
+USING PERIODIC COMMIT 1000
 LOAD CSV WITH HEADERS
 FROM "file:///award_file.csv" AS line
-WITH DISTINCT line
 
-// Try to skip over anything that's already been created:
-OPTIONAL MATCH (f:Award {AwardID:line.AwardID})
-WHERE f IS NULL
-// Since we add the AwardID along the relationship paths, we need to do the awards first.
-// We know that all awards have unique AwardIDs:
-MERGE (award:Award {AwardID: line.AwardID})
-ON CREATE SET award.AwardTitle  = UPPER(line.AwardTitle),
-    award.AwardAmount           = TOINT(line.AwardAmount),
-    award.ARRAAmount            = TOINT(line.ARRAAmount),
-    award.AwardInstrument       = line.`AwardInstrument.Value`,
-    award.AbstractNarration     = line.AbstractNarration;
+// Cleaning up duplicates first saves time.
+WITH DISTINCT line.AwardID AS AwardID, UPPER(line.AwardTitle) AS AwardTitle, 
+              TOINT(line.AwardAmount) AS AwardAmount, TOINT(line.ARRAAmount) AS ARRAAmount,
+              line.`AwardInstrument.Value` AS AwardInstrument, line.AbstractNarration AS AbstractNarration
+
+MERGE (award:Award {AwardID: AwardID})
+ON CREATE SET award.AwardTitle  = AwardTitle,
+    award.AwardAmount           = AwardAmount,
+    award.ARRAAmount            = ARRAAmount,
+    award.AwardInstrument       = AwardInstrument,
+    award.AbstractNarration     = AbstractNarration;
