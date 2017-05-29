@@ -23,8 +23,9 @@ echo Finished setting constraints.
 # I was running into memory errors, I'm going to try cutting the award file into smaller chunks:
 for i in {1..20}
 	do
-		echo ######################################################		
+		echo *****************************************************
 		echo Starting run $i
+		echo *****************************************************
 
 		START=$((($i-1)*50000+1))
 		END=$(($i*50000))
@@ -60,3 +61,6 @@ for i in {1..20}
 		neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/load_directorates.cql -v
 		echo Finished loading directorate information.
 	done
+
+neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file cql_folder/cleaning.cql -v
+echo Finished loading directorate information.
