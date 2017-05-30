@@ -1,4 +1,24 @@
 #! /bin/bash
+
+# This is a function to let us run things in parallel:
+runxml () 
+{
+	runit=1
+	while true; do
+		echo "WITH 'file://$PWD/$1' AS url" >> $1_cql.cql
+		cat cql_folder/xml_direct.cql >> $1_cql.cql
+
+		# Runs the award loading - just award nodes.
+		neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file $1_cql.cql && break
+	done
+	
+	echo "Finished importing $1."
+
+	rm $1_cql.cql
+}
+
+export -f runxml
+
 set -e
 
 ulimit -n 40000
@@ -38,18 +58,7 @@ for i in $XMLFILES
 		
 		echo "Now we're about to loop inside."
 
-		for j in $AWARDS
-			do
-				echo "WITH 'file://$PWD/$j' AS url" >> new_cql.cql
-				cat cql_folder/xml_direct.cql >> new_cql.cql
-
-		# Runs the award loading - just award nodes.
-				neo4j-shell -host 127.0.0.1 -port 1337 -name shell -file new_cql.cql
-				echo "Finished importing $j."
-
-				rm new_cql.cql
-
-			done
+		find ./data/input/awards -name *.xml | parallel --jobs 3 "runxml {}"
 
 		rm $AWARDS
 	done
