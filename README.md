@@ -1,6 +1,6 @@
 # EC_Network
 
-This repository is used to build and analyse a large graph database (using neo4j) in R, to examine the impact of EarthCube on investigator networks.  There are two components.  One to build the database, and one to analyze the constructed database.  See the Details below for more information.
+This repository is used to build and analyze a large graph database (using neo4j). The intent is to use this database for analysis to examine the impact of EarthCube on investigator networks.  There are two components.  One to build the database, and one to analyze the constructed database.  See the Details below for more information.
 
 ## Development
 
@@ -41,13 +41,25 @@ This assumes you use `root` privileges to start and stop the `neo4j` database (w
 
 There is probably a lot of work that can be done to optimize the core `CQL` file, [`cql_files/xml_direct.cql`](https://github.com/SimonGoring/EC_Network/blob/master/cql_folder/xml_direct.cql), but I'm still learning Cypher.  
 
-Additionally, although this code brings down the processing speed for each file to about 100ms *per* XML file, there are hundreds of thousands of files.  To optimize this operation I used GNU Parallel<a name="gnu"><sup>1</sup></a>.  You can see how the code for `build_db_xml.sh` changed by looking at the [commit history](https://github.com/SimonGoring/EC_Network/commit/e11a17ddefd080f1941af73708cc8fbfb19fab7e).  In particular, we make use of the `parallel` function (install using `apt install parallel` on linux systems) in the following way:
+Additionally, although this code brings down the processing speed for each file to about 100ms *per* XML file, there are hundreds of thousands of files.  To optimize this operation I used GNU Parallel<a name="gnu"><sup>1</sup></a>.  You can see how the code for `build_db_xml.sh` changed by looking at the [commit history](https://github.com/SimonGoring/EC_Network/commit/e11a17ddefd080f1941af73708cc8fbfb19fab7e).  In particular, we make use of the `parallel` function (install using `apt install parallel` on linux systems).  Because of the large number of files in later years, `parallel` needs to be run using the `--ungroup` flag. This allows the output to be pushed immediately, instead of filling memory up waiting for all the returns before dumping the output.
 
 ```bash
-find ./data/input/awards -name *.xml | parallel --jobs 3 "runxml {}"
+find ./data/input/awards/ -name *.xml | parallel --ungroup --eta "runxml {} >> output.log"
+
 ```
 
-This was a pretty fun discovery and it seems to have sped things up a bit for me.
+[GNU Parallel](https://www.gnu.org/software/parallel/) was a pretty fun discovery and it seems to have sped things up a bit for me.  There's some other great options here.  The `--eta` flag gives an output that returns some information about the run:
+
+```
+Computer:jobs running/jobs completed/%of started jobs/Average seconds to complete
+ETA: 153s Left: 300 AVG: 0.53s  local:300/7700/97%/0.7s     
+```
+
+One suggestion that has been made is to add some scripted element in here that builds the graph in memory and then does a periodic commit to neo4j.  This would speed the transaction further since each file requires its own `MATCH`/`CREATE` sequence.  Having multiple transactions bundled at once would lower this overhead, since the duplicates could be dealt with in memory before being committed to the neo4j database.
+
+# Conclusion
+
+I write too much academic research to leave without a concluding statement.  The end.
 
 <hr>
 

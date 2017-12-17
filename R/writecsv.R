@@ -98,32 +98,31 @@ bind_to_file <- function(x, award_file) {
 
   full_output <- apply(full_output, 2, function(x) gsub('"', "'", x)) %>% 
     as.data.frame
-  
-  if(!award_file %in% list.files('data/output')){
-    write.table(x = full_output[-1,], 
-      file = paste0('data/output/', award_file), 
-      quote = TRUE, sep = ",", row.names=FALSE)
-  } else {
 
-    write.table(x = full_output[-1,], 
-      file = paste0('data/output/', award_file), 
-      quote = TRUE, append = TRUE,
-      sep = ",", col.names = FALSE, row.names=FALSE)
-  }
-  
-  return(NULL)
+  return(full_output[-1,])
 }
 
-files <- list.files('data/input/awards/', full.names = TRUE, pattern = '.xml')
+system("bash get_awards.sh")
+
+files <- list.files('data/input/awards', full.names = TRUE, pattern = '.zip')
 
 file_length <- length(files)
 
 start <- proc.time()
 
-j <- 1
-
 for(i in 1:file_length) {
-  try(bind_to_file(files[i], paste0('award_file.csv')))
+
+  unzip(files[i], exdir = 'data/input/awards/unzipped')
+  
+  xmls <- list.files('data/input/awards/unzipped', full.names = TRUE)
+  
+  for(j in 1:length(xmls)) {
+    parse_df <- try(bind_to_file(xmls[j], paste0('award_file.csv')))
+    
+    
+    
+  }
+  
   if ((i %% 200) == 0) {
     elapsed <- proc.time()[3] - start[3]
     tpf <-  elapsed / i
