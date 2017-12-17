@@ -1,0 +1,10 @@
+##docker-compose.yml
+neo4j:
+  image: neo4j:3.0
+  ports:
+   - "17474:7474"
+   - "17687:7687"
+
+  volumes:
+   - /media/simon/DATA4/awards/data:/data
+   - /media/simon/DATA4/awards/logs:/logs
