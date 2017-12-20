@@ -5,6 +5,10 @@ MERGE (award:Award {AwardID: {AwardID}})
            award.AwardInstrument = {AwardInstrument},
          award.AbstractNarration = {AbstractNarration}
 
+MERGE (person:Person {EmailAddress: {InvestigatorEmailAddress}})
+    ON CREATE SET person.FirstName = {InvestigatorFirstName},
+                  person.LastName  = {InvestigatorLastName}
+
 MERGE ( state:State { Name: UPPER({InstitutionStateName}) })
 ON CREATE SET  state.Code = UPPER({InstitutionStateCode})
 
@@ -26,6 +30,21 @@ MERGE (state)-[ic:In_Country]->(country)
   ON  MATCH SET ic.AwardID = ic.AwardID + {AwardID}
                 
 MERGE (award)-[ai:Administered_by]->(institution)
+
+MERGE (person)<-[awd:Awarded_to]-(award)
+ON CREATE SET awd.RoleCode =  {InvestigatorRoleCode},
+              awd.StartDate = {InvestigatorStartDate},
+              awd.EndDate   = {InvestigatorEndDate}
+
+MERGE (person)-[emp:Employed_by]->(institution)
+  ON CREATE SET emp.AwardID = [] + {AwardID}
+  ON MATCH SET  emp.AwardID = emp.AwardID + {AwardID}
+
+MERGE (po:ProgramOfficer {Name: {ProgramOfficerSignBlockName}})
+
+// Building Relationships:
+// This whole set of relationships gets a basic pass, where we go through 
+MERGE (po)-[mgd:Handled]->(award)
 
 // Dates for awards - 
 // Here we do two things, we first make the matches, and then we add the
