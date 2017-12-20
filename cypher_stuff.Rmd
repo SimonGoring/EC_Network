@@ -93,6 +93,8 @@ edge_size <- RNeo4j::cypherToList(ec_graph,
   mutate(edges = unlist(edges)) %>% 
   arrange(desc(count))
 
+colnames(edge_size) <- c("Relationship", "Count")
+
 knitr::kable(edge_size)
 ```
 
@@ -315,9 +317,66 @@ ggplot(zeroed_year) +
 
 
 ```
+
 ```{r}
 ggplot(zeroed_year %>% filter(career_year == 0)) +
   geom_jitter(aes(x = program, y = total_years), alpha = 0.1) +
   xlab("Programs Funding First Grant") +
   ylab("Career Longevity")
 ```
+
+# Programs Similar to EarthCube
+
+```{r}
+total_awards <- RNeo4j::cypherToList(ec_graph,
+                                     "MATCH (n:Program)--(a:Award)
+                                      WITH n.Text AS Program, n.Code AS Code, COLLECT(a) AS Awards
+                                      RETURN Program, Code, SIZE(Awards) AS Awards;") %>% 
+  bind_rows()
+
+awds_near_ec <- total_awards %>% filter(Awards > 212 & Awards < 232)
+
+```
+
+So, how many programs are people applying to in the years after their awards in a particular program?
+
+```{r}
+
+test_by_code <- function(x, yr_range = c(-2, 2)) {
+  
+  if(length(yr_range) == 1) yr_range <- c(-yr_range, yr_range)
+  
+  if(length(yr_range) > 2) stop("The year range must be one or two elements long.")
+  if(yr_range[1] >= yr_range[2]) {
+    stop("The year range values are equivalent or not in ascending order.")
+  }
+  
+  awd_per_PI <- RNeo4j::cypherToList(ec_graph,
+      paste0("MATCH (pe:Person)<-[:Awarded_to]-(aec:Award)-[:Funded_by]->(n:Program {Code:'",x$Code,"'})
+              MATCH (aec)-[:Year_Started]->(ec:Year)
+              MATCH (pe)<-[:Awarded_to]-(a:Award)-[:Funded_by]->(n:Program)
+              MATCH (pe)--(a)-[:Year_Started]->(y:Year)
+              WHERE TOINT(y.Year) >= TOINT(ec.Year) +  ", yr_range[1], " AND 
+                    TOINT(y.Year) < TOINT(ec.Year) +  ", yr_range[2], " 
+              WITH pe, y.Year as year, COLLECT(n.Text) AS Programs, COLLECT(TOINT(ec.Year)) as ProgramYears
+              UNWIND ProgramYears AS pgyr
+              RETURN pe.FirstName AS FirstName, pe.LastName AS LastName, 
+                     year, MIN(pgyr), Programs AS programs, '", x$Code, "' as code, '",x$Program,"' AS focal_program ORDER BY LastName")) %>% bind_rows
+  return(awd_per_PI)
+}
+
+close_awds <- awds_near_ec %>% 
+  purrrlyr::by_row(test_by_code) %>% 
+  select(.out) %>% 
+  combine %>% 
+  bind_rows %>% 
+  as.data.frame
+
+ggplot(data = close_awds, aes(x = year, y = programs)) +
+  geom_smooth(aes(color = focal_program), method = 'glm', method.args=list(family='poisson')) +
+  geom_point(alpha = 0.2) +
+  facet_wrap(~focal_program, scales = 'free')
+
+```
+
+That's for EarthCube.

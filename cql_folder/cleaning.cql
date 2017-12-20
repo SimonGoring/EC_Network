@@ -115,3 +115,12 @@ SET n.Division = REPLACE(n.Division, "Divn ", "Division ");
 
 MATCH (n:Division) WHERE n.Division = "Direct For Biological Sciences"
 SET n.Division = "Directorate for Biological Sciences";
+
+// Funded & referenced
+// There's no reason to have a program both fund and reference the same award in the
+// same year.  It should be one or the other.
+// This clears approximately 200k relationships.
+
+MATCH (a:Award)-[:Funded_by]-(pr:Program)
+MATCH (a)-[ref:Referenced_by]-(pr)
+DELETE ref;

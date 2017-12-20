@@ -1,7 +1,8 @@
+library(RNeo4j)
 require(dplyr)
 # x <- 'data/input/awards/0000541.xml'
 
-bind_to_file <- function(x, award_file) {
+bind_to_file <- function(x) {
   
   is.NullOb <- function(x) (is.null(x) | length(x) == 0) | all(sapply(x, is.null))
   
@@ -56,7 +57,7 @@ bind_to_file <- function(x, award_file) {
                        AwardEffectiveDate = NA,
                        AwardExpirationDate = NA,
                        AwardAmount = NA,
-                       AwardInstrument.Value = NA,
+                       AwardInstrument = NA,
                        Organization.Code = NA,
                        Organization.Directorate = NA,
                        Organization.Division = NA,
@@ -97,7 +98,7 @@ bind_to_file <- function(x, award_file) {
   }
 
   full_output <- apply(full_output, 2, function(x) gsub('"', "'", x)) %>% 
-    as.data.frame
+    data.frame(stringsAsFactors = FALSE)
 
   return(full_output[-1,])
 }
@@ -110,6 +111,12 @@ file_length <- length(files)
 
 start <- proc.time()
 
+awardpw <- scan('neo4jpw.txt', what = 'character')
+
+graph <- startGraph("http://localhost:17474/db/data/", username = awardpw[1], password = awardpw[2])
+
+query <- readr::read_file('cql_folder/parameterized.cql')
+
 for(i in 1:file_length) {
 
   unzip(files[i], exdir = 'data/input/awards/unzipped')
@@ -117,20 +124,62 @@ for(i in 1:file_length) {
   xmls <- list.files('data/input/awards/unzipped', full.names = TRUE)
   
   for(j in 1:length(xmls)) {
-    parse_df <- try(bind_to_file(xmls[j], paste0('award_file.csv')))
     
+    tx <- newTransaction(graph)
     
+    parse_df <- try(bind_to_file(xmls[j]))
+    
+    parse_df[is.na(parse_df)] <- "None"
+    
+    colnames(parse_df) <- gsub("\\.", "", colnames(parse_df))
+
+    for (k in 1:nrow(parse_df)) {
+      
+      runlist <- as.list(parse_df[k,]) %>% 
+        sapply(., as.character) %>% 
+        as.list()
+    
+      if (runlist$InvestigatorEmailAddress == "None") {
+        runlist$InvestigatorEmailAddress <- paste0(toupper(runlist$InvestigatorFirstName),
+                                                   "_",
+                                                   toupper(runlist$InvestigatorLastName))
+      }
+      
+      datecheck <- function(x) {
+        is.null(x) | 
+          is.na(x) | x %in% c("NA", "None")
+      }
+      
+      if (datecheck(runlist$InvestigatorStartDate)) {
+        runlist$InvestigatorStartDate <- "0/0/0"
+      }
+      
+      if (datecheck(runlist$InvestigatorEndDate)) {
+        runlist$InvestigatorEndDate <- "0/0/0"
+      }
+      
+      if (datecheck(runlist$MinAmdLetterDate)) {
+        runlist$MinAmdLetterDate <- "0/0/0"
+      }
+      
+      if (datecheck(runlist$MaxAmdLetterDate)) {
+        runlist$MaxAmdLetterDate <- "0/0/0"
+      }
+      
+      if (datecheck(runlist$AwardExpirationDate)) {
+        runlist$MinAmdLetterDate <- "0/0/0"
+      }
+      
+      if (datecheck(runlist$AwardEffectiveDate)) {
+        runlist$MaxAmdLetterDate <- "0/0/0"
+      }
+        
+      appendCypher(tx, query, runlist)
+    
+    }
+
+    commit(tx)
     
   }
   
-  if ((i %% 200) == 0) {
-    elapsed <- proc.time()[3] - start[3]
-    tpf <-  elapsed / i
-
-    end_time <- round((tpf * (file_length - i)) / 60, 0)
-
-    message("Run ", i, " of ", file_length, " files.  ", round(tpf, 2), 
-            "s per file. ",end_time,"m remaining.\r", appendLF=FALSE)
-    flush.console()
-  }
 }
