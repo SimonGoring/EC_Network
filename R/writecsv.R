@@ -1,6 +1,5 @@
 library(RNeo4j)
 require(dplyr)
-# x <- 'data/input/awards/0000541.xml'
 
 bind_to_file <- function(x) {
   
@@ -103,8 +102,6 @@ bind_to_file <- function(x) {
   return(full_output[-1,])
 }
 
-system("bash get_awards.sh")
-
 files <- list.files('data/input/awards', full.names = TRUE, pattern = '.zip')
 
 file_length <- length(files)
@@ -113,7 +110,7 @@ start <- proc.time()
 
 awardpw <- scan('neo4jpw.txt', what = 'character')
 
-graph <- startGraph("http://localhost:17474/db/data/", username = awardpw[1], password = awardpw[2])
+graph <- startGraph("http://localhost:7474/db/data/", username = awardpw[1], password = awardpw[2])
 
 query <- readr::read_file('cql_folder/parameterized.cql')
 
@@ -123,10 +120,14 @@ for(i in 1:file_length) {
   
   xmls <- list.files('data/input/awards/unzipped', full.names = TRUE)
   
+  cat(paste0("\nUnzipped ",files[i],", a total of ", length(xmls), " files to be added.\n"))
+
+  tx <- newTransaction(graph)
+
   for(j in 1:length(xmls)) {
     
-    tx <- newTransaction(graph)
-    
+    cat(paste0("  * Opening ",xmls[j],".\n"))
+
     parse_df <- try(bind_to_file(xmls[j]))
     
     parse_df[is.na(parse_df)] <- "None"
@@ -178,8 +179,10 @@ for(i in 1:file_length) {
     
     }
     
+    cat(paste0(j,','))
+
     if(j %% 20 == 0 | j == length(xmls)) {
-      cat("The zip file ", files[i], " has ", length(xmls), "files.  We're at ", j, ".\n")
+      cat("\nThe zip file ", files[i], " has ", length(xmls), "files.  We're at ", j, ".\n")
       commit(tx)
     }
     
