@@ -177,8 +177,11 @@ for(i in 1:file_length) {
       appendCypher(tx, query, runlist)
     
     }
-
-    commit(tx)
+    
+    if(j %% 20 == 0 | j == length(xmls)) {
+      cat("The zip file ", files[i], " has ", length(xmls), "files.  We're at ", j, ".\n")
+      commit(tx)
+    }
     
   }
   
